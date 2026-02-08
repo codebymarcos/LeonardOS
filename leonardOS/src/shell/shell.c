@@ -1,13 +1,14 @@
-// LeonardOS - Shell ASCII Minimalista
-// Apenas: help, clear, halt
+// LeonardOS - Shell com cores
+// Comandos: help, clear, sysinfo, halt
 
 #include "shell.h"
 #include "../drivers/vga/vga.h"
 #include "../drivers/keyboard/keyboard.h"
+#include "../common/colors.h"
 
 // Halt o kernel
 static void halt(void) {
-    vga_puts("Desligando...\n");
+    vga_puts_color("Desligando...\n", THEME_WARNING);
     asm volatile("cli");
     asm volatile("hlt");
     while (1);
@@ -16,28 +17,64 @@ static void halt(void) {
 // Exibe informações do sistema
 static void sysinfo(void) {
     vga_puts("\n");
-    vga_puts("  ╔═════════════════════════════════════╗\n");
-    vga_puts("  ║      LeonardOS Sysinfo             ║\n");
-    vga_puts("  ╚═════════════════════════════════════╝\n");
+    vga_puts_color("  ╔═════════════════════════════════════╗\n", THEME_BORDER);
+    vga_puts_color("  ║", THEME_BORDER);
+    vga_puts_color("      LeonardOS Sysinfo             ", THEME_TITLE);
+    vga_puts_color(" ║\n", THEME_BORDER);
+    vga_puts_color("  ╚═════════════════════════════════════╝\n", THEME_BORDER);
     vga_puts("\n");
-    vga_puts("  OS              : LeonardOS v0.1\n");
-    vga_puts("  Kernel          : LeonardOS Kernel (32-bit)\n");
-    vga_puts("  Architecture    : x86 (i386)\n");
-    vga_puts("  Bootloader      : GRUB (Multiboot2)\n");
-    vga_puts("  Mode            : Protected Mode 32-bit\n");
-    vga_puts("  Memory          : VGA Buffer (0xB8000)\n");
-    vga_puts("  Resolution      : 80x25 (Text Mode)\n");
-    vga_puts("  Color Depth     : 4-bit (16 colors)\n");
+
+    vga_puts_color("  OS              ", THEME_LABEL);
+    vga_puts_color(": ", THEME_DIM);
+    vga_puts_color("LeonardOS v0.1\n", THEME_VALUE);
+
+    vga_puts_color("  Kernel          ", THEME_LABEL);
+    vga_puts_color(": ", THEME_DIM);
+    vga_puts_color("LeonardOS Kernel (32-bit)\n", THEME_VALUE);
+
+    vga_puts_color("  Architecture    ", THEME_LABEL);
+    vga_puts_color(": ", THEME_DIM);
+    vga_puts_color("x86 (i386)\n", THEME_VALUE);
+
+    vga_puts_color("  Bootloader      ", THEME_LABEL);
+    vga_puts_color(": ", THEME_DIM);
+    vga_puts_color("GRUB (Multiboot2)\n", THEME_VALUE);
+
+    vga_puts_color("  Mode            ", THEME_LABEL);
+    vga_puts_color(": ", THEME_DIM);
+    vga_puts_color("Protected Mode 32-bit\n", THEME_VALUE);
+
+    vga_puts_color("  Memory          ", THEME_LABEL);
+    vga_puts_color(": ", THEME_DIM);
+    vga_puts_color("VGA Buffer (0xB8000)\n", THEME_VALUE);
+
+    vga_puts_color("  Resolution      ", THEME_LABEL);
+    vga_puts_color(": ", THEME_DIM);
+    vga_puts_color("80x25 (Text Mode)\n", THEME_VALUE);
+
+    vga_puts_color("  Color Depth     ", THEME_LABEL);
+    vga_puts_color(": ", THEME_DIM);
+    vga_puts_color("4-bit (16 colors)\n", THEME_VALUE);
+
     vga_puts("\n");
 }
 
 // Exibe ajuda
 static void help(void) {
-    vga_puts("LeonardOS - Comandos:\n");
-    vga_puts("  help    - exibe este texto\n");
-    vga_puts("  clear   - limpa a tela\n");
-    vga_puts("  sysinfo - exibe informações do sistema\n");
-    vga_puts("  halt    - desliga o kernel\n");
+    vga_puts_color("LeonardOS", THEME_TITLE);
+    vga_puts_color(" - Comandos:\n", THEME_DEFAULT);
+
+    vga_puts_color("  help    ", THEME_INFO);
+    vga_puts_color("- exibe este texto\n", THEME_DEFAULT);
+
+    vga_puts_color("  clear   ", THEME_INFO);
+    vga_puts_color("- limpa a tela\n", THEME_DEFAULT);
+
+    vga_puts_color("  sysinfo ", THEME_INFO);
+    vga_puts_color("- exibe informações do sistema\n", THEME_DEFAULT);
+
+    vga_puts_color("  halt    ", THEME_INFO);
+    vga_puts_color("- desliga o kernel\n", THEME_DEFAULT);
 }
 
 // Compara strings
@@ -62,8 +99,8 @@ static void process_command(const char *cmd) {
     } else if (strcmp_simple(cmd, "halt") == 0) {
         halt();
     } else if (cmd[0] != 0) {
-        vga_puts("Comando desconhecido: ");
-        vga_puts(cmd);
+        vga_puts_color("Comando desconhecido: ", THEME_ERROR);
+        vga_puts_color(cmd, THEME_WARNING);
         vga_puts("\n");
     }
 }
@@ -72,10 +109,15 @@ static void process_command(const char *cmd) {
 void shell_loop(void) {
     static char cmd_buf[256];
     
-    vga_puts("LeonardOS v0.1 - Digite 'help' para ajuda\n");
+    vga_set_color(THEME_DEFAULT);
+    vga_puts_color("LeonardOS v0.1", THEME_TITLE);
+    vga_puts(" - Digite '");
+    vga_puts_color("help", THEME_INFO);
+    vga_puts("' para ajuda\n");
     
     while (1) {
-        vga_puts("> ");
+        vga_puts_color("> ", THEME_PROMPT);
+        vga_set_color(THEME_DEFAULT);
         kbd_read_line(cmd_buf, sizeof(cmd_buf));
         vga_putchar('\n');
         

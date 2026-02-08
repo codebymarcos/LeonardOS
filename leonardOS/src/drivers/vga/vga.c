@@ -1,5 +1,5 @@
 // LeonardOS - Driver VGA Text Mode
-// Suporte completo UTF-8 -> CP437
+// Suporte completo UTF-8 -> CP437 + cores
 
 #include "vga.h"
 
@@ -8,12 +8,21 @@
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
 
-// Cor VGA: 4 bits fundo, 4 bits frente
-#define COLOR_BLACK 0
-#define COLOR_WHITE 7
-
 static int cursor_row = 0;
 static int cursor_col = 0;
+
+// Cor global atual (padrão: tema default do colors.h)
+static unsigned char current_attr = THEME_DEFAULT;
+
+// Define a cor global
+void vga_set_color(unsigned char attr) {
+    current_attr = attr;
+}
+
+// Retorna a cor global atual
+unsigned char vga_get_color(void) {
+    return current_attr;
+}
 
 // ============================================================
 // Tabela de mapeamento Unicode -> CP437
@@ -273,24 +282,22 @@ static int vga_index(int row, int col) {
     return (row * VGA_WIDTH + col) * 2;
 }
 
-// Limpa a tela
+// Limpa a tela (usa cor atual)
 void vga_clear(void) {
     unsigned char *vga = VGA_MEMORY;
-    unsigned char attr = (COLOR_BLACK << 4) | COLOR_WHITE;
     
     for (int i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
         vga[i * 2] = ' ';
-        vga[i * 2 + 1] = attr;
+        vga[i * 2 + 1] = current_attr;
     }
     
     cursor_row = 0;
     cursor_col = 0;
 }
 
-// Escreve um byte CP437 na posição atual (uso interno)
-static void vga_putbyte(unsigned char c) {
+// Escreve um byte CP437 com atributo de cor específico (uso interno)
+static void vga_putbyte_attr(unsigned char c, unsigned char attr) {
     unsigned char *vga = VGA_MEMORY;
-    unsigned char attr = (COLOR_BLACK << 4) | COLOR_WHITE;
     
     if (c == '\n') {
         cursor_row++;
@@ -308,7 +315,7 @@ static void vga_putbyte(unsigned char c) {
         vga[idx + 1] = attr;
         cursor_col++;
     }
-    
+
     // Scroll se necessário
     if (cursor_col >= VGA_WIDTH) {
         cursor_col = 0;
@@ -324,23 +331,42 @@ static void vga_putbyte(unsigned char c) {
         // Limpa última linha
         for (int i = 0; i < VGA_WIDTH; i++) {
             vga[((VGA_HEIGHT - 1) * VGA_WIDTH + i) * 2] = ' ';
-            vga[((VGA_HEIGHT - 1) * VGA_WIDTH + i) * 2 + 1] = attr;
+            vga[((VGA_HEIGHT - 1) * VGA_WIDTH + i) * 2 + 1] = current_attr;
         }
         cursor_row = VGA_HEIGHT - 1;
     }
 }
 
-// Escreve um caractere (API publica, aceita ASCII)
+// Escreve um byte CP437 com a cor global atual (uso interno)
+static void vga_putbyte(unsigned char c) {
+    vga_putbyte_attr(c, current_attr);
+}
+
+// Escreve um caractere (API publica, usa cor global)
 void vga_putchar(char c) {
     vga_putbyte((unsigned char)c);
 }
 
-// Escreve string com decodificacao UTF-8 -> CP437
+// Escreve um caractere com cor específica (não altera cor global)
+void vga_putchar_color(char c, unsigned char attr) {
+    vga_putbyte_attr((unsigned char)c, attr);
+}
+
+// Escreve string com decodificacao UTF-8 -> CP437 (usa cor global)
 void vga_puts(const char *s) {
     while (*s) {
         unsigned int cp = utf8_decode(&s);
         unsigned char ch = unicode_to_cp437(cp);
         vga_putbyte(ch);
+    }
+}
+
+// Escreve string com cor específica (não altera cor global)
+void vga_puts_color(const char *s, unsigned char attr) {
+    while (*s) {
+        unsigned int cp = utf8_decode(&s);
+        unsigned char ch = unicode_to_cp437(cp);
+        vga_putbyte_attr(ch, attr);
     }
 }
 
