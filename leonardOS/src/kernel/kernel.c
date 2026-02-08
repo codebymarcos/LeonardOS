@@ -3,6 +3,7 @@
 
 #include "drivers/vga/vga.h"
 #include "common/colors.h"
+#include "cpu/gdt.h"
 #include "shell/shell.h"
 
 void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multiboot_info) {
@@ -23,6 +24,11 @@ void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multib
         while (1);
     }
     
+    // Inicializa GDT (Global Descriptor Table)
+    gdt_init();
+    vga_puts_color("[OK] ", THEME_BOOT_OK);
+    vga_puts_color("GDT carregada\n", THEME_BOOT);
+
     vga_puts_color("Bootloader: ", THEME_LABEL);
     vga_puts_color("GRUB (Multiboot2 32-bit)\n", THEME_VALUE);
     vga_puts_color("Arquitetura: ", THEME_LABEL);
