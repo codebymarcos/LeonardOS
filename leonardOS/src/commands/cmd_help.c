@@ -11,11 +11,24 @@ void cmd_help(const char *args) {
     const command_t *cmds = commands_get_all();
     int count = commands_get_count();
 
-    vga_puts_color("LeonardOS", THEME_TITLE);
-    vga_puts_color(" - Comandos:\n", THEME_DEFAULT);
+    vga_puts_color("\n", THEME_DEFAULT);
+    vga_puts_color("     _.--._  _.--._\n", THEME_BANNER);
+    vga_puts_color("  ,-=.-\":;:;:;\\'\\':;:;:;\"-._\n", THEME_BANNER);
+    vga_puts_color("  \\\\\\:;:;:;:;:;\\:;:;:;:;:;\\\n", THEME_BANNER);
+    vga_puts_color("   \\\\\\:;:;:;:;:;\\:;:;:;:;:;\\\n", THEME_BANNER);
+    vga_puts_color("    \\\\\\:;:;:;:;:;\\:;:;:;:;:;\\\n", THEME_BANNER);
+    vga_puts_color("     \\\\\\:;:;:;:;:;\\:;::;:;:;:\\\n", THEME_BANNER);
+    vga_puts_color("      \\\\\\;:;::;:;:;\\:;:;:;::;:\\\n", THEME_BANNER);
+    vga_puts_color("       \\\\\\;;:;:_:--:\\:_:--:_;:;\\", THEME_BANNER);
+    vga_puts_color("    -leonardOS\n", THEME_TITLE);
+    vga_puts_color("        \\\\\\_.-\"      :      \"-._\\\n", THEME_BANNER);
+    vga_puts_color("         \\`_..--\"\"--. ;.--\"\"--.._ =>\n", THEME_BANNER);
+    vga_puts_color("          \"\n\n", THEME_BANNER);
+
+    vga_puts_color("  Comandos disponiveis:\n", THEME_DEFAULT);
 
     for (int i = 0; i < count; i++) {
-        vga_puts_color("  ", THEME_DEFAULT);
+        vga_puts_color("    ", THEME_DEFAULT);
         vga_puts_color(cmds[i].name, THEME_INFO);
 
         // Padding para alinhar descrições
@@ -30,4 +43,5 @@ void cmd_help(const char *args) {
         vga_puts_color(cmds[i].description, THEME_DEFAULT);
         vga_putchar('\n');
     }
+    vga_putchar('\n');
 }

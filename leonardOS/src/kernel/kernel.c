@@ -8,6 +8,8 @@
 #include "drivers/pic/pic.h"
 #include "drivers/keyboard/keyboard.h"
 #include "memory/pmm.h"
+#include "memory/vmm.h"
+#include "memory/heap.h"
 #include "shell/shell.h"
 
 void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multiboot_info) {
@@ -58,6 +60,30 @@ void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multib
         vga_puts_color("MB detectados, ", THEME_BOOT);
         vga_putint(stats.free_frames);
         vga_puts_color(" frames livres\n", THEME_BOOT);
+    }
+
+    // Inicializa Paging (VMM) - Identity mapping 16MB
+    paging_init();
+    {
+        struct vmm_stats vs = paging_get_stats();
+        vga_puts_color("[OK] ", THEME_BOOT_OK);
+        vga_puts_color("Paging: identity map ", THEME_BOOT);
+        vga_putint(vs.identity_map_mb);
+        vga_puts_color("MB, ", THEME_BOOT);
+        vga_putint(vs.page_tables_used);
+        vga_puts_color(" page tables\n", THEME_BOOT);
+    }
+
+    // Inicializa Heap do Kernel (kmalloc/kfree)
+    heap_init();
+    {
+        struct heap_stats hs = heap_get_stats();
+        vga_puts_color("[OK] ", THEME_BOOT_OK);
+        vga_puts_color("Heap: ", THEME_BOOT);
+        vga_putint(hs.pages_allocated * 4);
+        vga_puts_color("KB inicial, ", THEME_BOOT);
+        vga_putint(hs.free_bytes);
+        vga_puts_color(" bytes livres\n", THEME_BOOT);
     }
 
     // Habilita interrupções

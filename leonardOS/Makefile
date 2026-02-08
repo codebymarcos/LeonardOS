@@ -25,6 +25,8 @@ CMD_HALT_C = src/commands/cmd_halt.c
 CMD_TEST_C = src/commands/cmd_test.c
 CMD_MEM_C = src/commands/cmd_mem.c
 PMM_C = src/memory/pmm.c
+VMM_C = src/memory/vmm.c
+HEAP_C = src/memory/heap.c
 
 OBJ_BOOT = build/boot.o
 OBJ_KERNEL = build/kernel.o
@@ -45,10 +47,12 @@ OBJ_CMD_HALT = build/cmd_halt.o
 OBJ_CMD_TEST = build/cmd_test.o
 OBJ_CMD_MEM = build/cmd_mem.o
 OBJ_PMM = build/pmm.o
+OBJ_VMM = build/vmm.o
+OBJ_HEAP = build/heap.o
 OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
           $(OBJ_GDT) $(OBJ_GDT_FLUSH) $(OBJ_IDT) $(OBJ_ISR) $(OBJ_ISR_STUB) $(OBJ_PIC) \
           $(OBJ_CMD_COMMANDS) $(OBJ_CMD_HELP) $(OBJ_CMD_CLEAR) $(OBJ_CMD_SYSINFO) $(OBJ_CMD_HALT) \
-          $(OBJ_CMD_TEST) $(OBJ_CMD_MEM) $(OBJ_PMM)
+          $(OBJ_CMD_TEST) $(OBJ_CMD_MEM) $(OBJ_PMM) $(OBJ_VMM) $(OBJ_HEAP)
 
 TARGET = build/kernel.elf
 ISO = build/leonardos.iso
@@ -131,6 +135,14 @@ build/cmd_mem.o: $(CMD_MEM_C)
 	$(CC) $(CFLAGS) $< -o $@
 
 build/pmm.o: $(PMM_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/vmm.o: $(VMM_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/heap.o: $(HEAP_C)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@
 

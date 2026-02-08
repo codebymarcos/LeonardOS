@@ -14,6 +14,8 @@
 #include "../drivers/pic/pic.h"
 #include "../drivers/keyboard/keyboard.h"
 #include "../memory/pmm.h"
+#include "../memory/vmm.h"
+#include "../memory/heap.h"
 
 // ============================================================
 // Contadores de resultado
@@ -93,9 +95,9 @@ static void test_cpu(void) {
     test_result("CR0 Protected Mode (PE bit)", cr0 & 0x1, NULL);
     test_info_hex("CR0", cr0);
 
-    // Testa se paging está desativado (bit 31 de CR0)
+    // Testa se paging está habilitado (bit 31 de CR0)
     int paging = (cr0 >> 31) & 1;
-    test_result("CR0 Paging desativado", !paging, paging ? "ATIVO" : "desativado");
+    test_result("CR0 Paging habilitado (PG bit)", paging, paging ? "ativo" : "DESATIVADO");
 
     // Lê EFLAGS
     uint32_t eflags;
@@ -508,7 +510,166 @@ static void test_pmm(void) {
 }
 
 // ============================================================
-// 10. Teste do sistema de Comandos
+// 10. Teste do Paging (VMM)
+// ============================================================
+static void test_paging(void) {
+    test_header("Paging / VMM");
+
+    // Verifica que paging está habilitado (CR0 bit 31)
+    uint32_t cr0;
+    asm volatile("mov %%cr0, %0" : "=r"(cr0));
+    int pg_enabled = (cr0 >> 31) & 1;
+    test_result("CR0 Paging habilitado (PG bit)", pg_enabled, NULL);
+
+    // Verifica CR3 (Page Directory base)
+    uint32_t cr3;
+    asm volatile("mov %%cr3, %0" : "=r"(cr3));
+    test_result("CR3 != 0 (PD carregado)", cr3 != 0, NULL);
+    test_info_hex("CR3 (Page Directory)", cr3);
+
+    // Estatísticas
+    struct vmm_stats stats = paging_get_stats();
+    test_info_int("Paginas mapeadas", stats.pages_mapped);
+    test_info_int("Page Tables usadas", stats.page_tables_used);
+    test_info_int("Identity map (MB)", stats.identity_map_mb);
+    test_info_int("Page faults", stats.page_faults);
+
+    test_result("Page Tables == 4 (16MB/4MB)", stats.page_tables_used == 4, NULL);
+    // 16MB / 4KB = 4096 páginas
+    test_result("Paginas mapeadas == 4096", stats.pages_mapped >= 4096, NULL);
+
+    // Identity map: virtual 0x100000 → physical 0x100000 (kernel)
+    uint32_t kernel_phys = get_physical_addr(0x100000);
+    test_result("Identity: 0x100000 -> 0x100000", kernel_phys == 0x100000, NULL);
+    test_info_hex("get_physical_addr(0x100000)", kernel_phys);
+
+    // Identity map: VGA buffer 0xB8000
+    uint32_t vga_phys = get_physical_addr(0xB8000);
+    test_result("Identity: 0xB8000 -> 0xB8000 (VGA)", vga_phys == 0xB8000, NULL);
+
+    // Identity map: endereço 0 (deve mapear para 0)
+    uint32_t zero_phys = get_physical_addr(0x0);
+    test_result("Identity: 0x0 -> 0x0", zero_phys == 0x0, NULL);
+
+    // Verifica is_page_mapped em região identity-mapped
+    test_result("is_page_mapped(0x100000)", is_page_mapped(0x100000), NULL);
+    test_result("is_page_mapped(0xB8000)", is_page_mapped(0xB8000), NULL);
+
+    // Verifica que região acima de 16MB NÃO está mapeada
+    test_result("!is_page_mapped(0x1000000) (16MB)", !is_page_mapped(0x1000000), NULL);
+
+    // Teste de map_page: mapeia uma página nova acima de 16MB
+    // Usa um frame do PMM como backing
+    uint32_t test_frame = pmm_alloc_frame();
+    if (test_frame != 0) {
+        uint32_t test_vaddr = 0x2000000;  // 32MB - fora do identity map
+
+        map_page(test_vaddr, test_frame, PAGE_KERNEL);
+        test_result("map_page: pagina mapeada", is_page_mapped(test_vaddr), NULL);
+
+        uint32_t resolved = get_physical_addr(test_vaddr);
+        test_result("map_page: resolve corretamente",
+                    resolved == test_frame, NULL);
+        test_info_hex("map_page vaddr", test_vaddr);
+        test_info_hex("map_page paddr", resolved);
+
+        // Escreve e lê na página mapeada
+        volatile uint32_t *ptr = (volatile uint32_t *)test_vaddr;
+        *ptr = 0xCAFEBABE;
+        test_result("map_page: write/read OK", *ptr == 0xCAFEBABE, NULL);
+
+        // unmap_page
+        unmap_page(test_vaddr);
+        test_result("unmap_page: pagina desmapeada", !is_page_mapped(test_vaddr), NULL);
+
+        // Libera o frame de teste
+        pmm_free_frame(test_frame);
+    } else {
+        test_result("map_page: frame alocado", 0, "sem memoria");
+    }
+
+    test_result("Page faults == 0 (nenhum inesperado)",
+                paging_get_stats().page_faults == 0, NULL);
+}
+
+// ============================================================
+// 11. Teste do Heap (kmalloc / kfree)
+// ============================================================
+static void test_heap(void) {
+    test_header("Heap (kmalloc / kfree)");
+
+    // Stats iniciais
+    struct heap_stats s0 = heap_get_stats();
+    test_info_int("Heap total (bytes)", s0.total_bytes);
+    test_info_int("Heap livre (bytes)", s0.free_bytes);
+    test_info_int("Paginas alocadas", s0.pages_allocated);
+    test_result("Heap inicializado (pages > 0)", s0.pages_allocated > 0, NULL);
+    test_result("1 bloco livre inicial", s0.free_blocks >= 1, NULL);
+    test_result("0 blocos usados", s0.used_blocks == 0, NULL);
+
+    // 1. kmalloc(32)
+    void *a = kmalloc(32);
+    test_result("kmalloc(32) != NULL", a != NULL, NULL);
+    test_result("Alinhado a 8 bytes", ((uint32_t)(uintptr_t)a % HEAP_ALIGNMENT) == 0, NULL);
+    test_info_hex("Endereco a", (uint32_t)(uintptr_t)a);
+
+    // 2. kmalloc(128)
+    void *b = kmalloc(128);
+    test_result("kmalloc(128) != NULL", b != NULL, NULL);
+    test_result("b != a (enderecos diferentes)", b != a, NULL);
+    test_result("b > a (sequencial)", (uint32_t)(uintptr_t)b > (uint32_t)(uintptr_t)a, NULL);
+    test_info_hex("Endereco b", (uint32_t)(uintptr_t)b);
+
+    // Verifica stats após 2 alocações
+    struct heap_stats s1 = heap_get_stats();
+    test_result("2 blocos usados", s1.used_blocks == 2, NULL);
+    test_result("alloc_count == 2", s1.alloc_count - s0.alloc_count == 2, NULL);
+
+    // 3. kfree(a) — libera o primeiro
+    kfree(a);
+    struct heap_stats s2 = heap_get_stats();
+    test_result("kfree(a): 1 bloco usado", s2.used_blocks == 1, NULL);
+
+    // 4. kmalloc(16) — deve reutilizar o espaço de 'a'
+    void *c = kmalloc(16);
+    test_result("kmalloc(16) != NULL", c != NULL, NULL);
+    test_result("Reutilizou espaco de a (c <= a)",
+                (uint32_t)(uintptr_t)c <= (uint32_t)(uintptr_t)a, NULL);
+    test_info_hex("Endereco c", (uint32_t)(uintptr_t)c);
+
+    // 5. kfree(b)
+    kfree(b);
+
+    // 6. kfree(c)
+    kfree(c);
+
+    // 7. Heap deve consolidar em 1 bloco livre
+    struct heap_stats s3 = heap_get_stats();
+    test_result("Todos liberados: 0 usados", s3.used_blocks == 0, NULL);
+    test_result("Coalescing: 1 bloco livre", s3.free_blocks == 1, NULL);
+    test_result("free_count correto", s3.free_count - s0.free_count == 3, NULL);
+
+    // Stats devem bater
+    test_result("free_bytes restaurado", s3.free_bytes == s0.free_bytes, NULL);
+
+    // Double-free protection
+    void *d = kmalloc(64);
+    kfree(d);
+    kfree(d);  // double-free — não deve crashar
+    struct heap_stats s4 = heap_get_stats();
+    test_result("Double-free seguro", s4.used_blocks == 0, NULL);
+
+    // NULL free protection
+    kfree(NULL);  // não deve crashar
+    test_result("kfree(NULL) seguro", 1, NULL);
+
+    // kmalloc(0) deve retornar NULL
+    void *e = kmalloc(0);
+    test_result("kmalloc(0) == NULL", e == NULL, NULL);
+}
+
+// ============================================================
+// 12. Teste do sistema de Comandos
 // ============================================================
 static void test_commands(void) {
     test_header("Sistema de Comandos");
@@ -566,6 +727,8 @@ void cmd_test(const char *args) {
     test_keyboard();
     test_io_ports();
     test_pmm();
+    test_paging();
+    test_heap();
     test_commands();
 
     // Resumo final

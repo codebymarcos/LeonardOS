@@ -5,3 +5,6 @@
 [v] Teclado via IRQ
 [v] Shell com sistema de comandos modular
 [v] Testes automatizados
+[v] PMM (bitmap allocator, 4KB frames, Multiboot2 mmap)
+[v] Paging / VMM (identity map 16MB, page fault handler)
+[v] Heap do Kernel (kmalloc/kfree, first-fit, coalescing)
