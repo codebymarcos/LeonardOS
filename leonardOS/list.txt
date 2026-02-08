@@ -1,0 +1,7 @@
+[v] Boot Multiboot2
+[v] GDT (segmentação flat 4GB)
+[v] IDT + ISR + PIC (interrupções)
+[v] VGA com UTF-8, cores, scrollback
+[v] Teclado via IRQ
+[v] Shell com sistema de comandos modular
+[v] Testes automatizados

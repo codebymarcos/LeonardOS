@@ -7,11 +7,10 @@
 #include "cpu/isr.h"
 #include "drivers/pic/pic.h"
 #include "drivers/keyboard/keyboard.h"
+#include "memory/pmm.h"
 #include "shell/shell.h"
 
 void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multiboot_info) {
-    (void)multiboot_info;
-
     // Inicializa VGA
     vga_set_color(THEME_DEFAULT);
     vga_clear();
@@ -48,6 +47,18 @@ void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multib
     kbd_init();
     vga_puts_color("[OK] ", THEME_BOOT_OK);
     vga_puts_color("Teclado PS/2 (IRQ1)\n", THEME_BOOT);
+
+    // Inicializa PMM (Physical Memory Manager)
+    pmm_init(multiboot_info);
+    {
+        struct pmm_stats stats = pmm_get_stats();
+        vga_puts_color("[OK] ", THEME_BOOT_OK);
+        vga_puts_color("PMM: ", THEME_BOOT);
+        vga_putint(stats.total_memory_kb / 1024);
+        vga_puts_color("MB detectados, ", THEME_BOOT);
+        vga_putint(stats.free_frames);
+        vga_puts_color(" frames livres\n", THEME_BOOT);
+    }
 
     // Habilita interrupções
     asm volatile("sti");

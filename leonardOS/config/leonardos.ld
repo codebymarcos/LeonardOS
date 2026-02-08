@@ -38,7 +38,10 @@ SECTIONS {
         *(.bss.*)
         *(COMMON)
     }
-    
+
+    /* Símbolo de fim do kernel - usado pelo PMM para saber onde começa a memória livre */
+    _kernel_end = .;
+
     /DISCARD/ : {
         *(.note.GNU-stack)
         *(.gnu_debuglink)

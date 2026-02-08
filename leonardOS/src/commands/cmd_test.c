@@ -13,6 +13,7 @@
 #include "../cpu/isr.h"
 #include "../drivers/pic/pic.h"
 #include "../drivers/keyboard/keyboard.h"
+#include "../memory/pmm.h"
 
 // ============================================================
 // Contadores de resultado
@@ -441,7 +442,73 @@ static void test_io_ports(void) {
 }
 
 // ============================================================
-// 9. Teste do sistema de Comandos
+// 9. Teste do PMM (Physical Memory Manager)
+// ============================================================
+static void test_pmm(void) {
+    test_header("PMM (Physical Memory Manager)");
+
+    // Verifica que PMM foi inicializado com estatísticas válidas
+    struct pmm_stats stats = pmm_get_stats();
+
+    test_info_int("RAM total (KB)", stats.total_memory_kb);
+    test_info_int("Frames totais", stats.total_frames);
+    test_info_int("Frames usados", stats.used_frames);
+    test_info_int("Frames livres", stats.free_frames);
+    test_info_int("Frames do kernel", stats.kernel_frames);
+
+    // Verifica que detectou memória
+    test_result("RAM detectada (> 0)", stats.total_memory_kb > 0, NULL);
+    test_result("Frames totais > 0", stats.total_frames > 0, NULL);
+    test_result("Frames livres > 0", stats.free_frames > 0, NULL);
+    test_result("Kernel usa frames", stats.kernel_frames > 0, NULL);
+    test_result("Consistencia: total = used + free",
+                stats.total_frames == stats.used_frames + stats.free_frames, NULL);
+
+    // Teste de alloc/free
+    uint32_t frame1 = pmm_alloc_frame();
+    test_result("pmm_alloc_frame() != 0", frame1 != 0, NULL);
+    test_info_hex("Frame alocado", frame1);
+    test_result("Frame alocado alinhado (4KB)", frame1 % PMM_FRAME_SIZE == 0, NULL);
+    test_result("Frame marcado como usado", pmm_is_frame_used(frame1), NULL);
+
+    // Aloca segundo frame (deve ser diferente)
+    uint32_t frame2 = pmm_alloc_frame();
+    test_result("Segundo frame != primeiro", frame2 != frame1, NULL);
+    test_result("Segundo frame != 0", frame2 != 0, NULL);
+
+    // Verifica stats após alocação
+    struct pmm_stats stats_after = pmm_get_stats();
+    test_result("used_frames aumentou +2",
+                stats_after.used_frames == stats.used_frames + 2, NULL);
+
+    // Free frame 1
+    pmm_free_frame(frame1);
+    test_result("Frame 1 liberado (nao usado)", !pmm_is_frame_used(frame1), NULL);
+
+    // Free frame 2
+    pmm_free_frame(frame2);
+    test_result("Frame 2 liberado (nao usado)", !pmm_is_frame_used(frame2), NULL);
+
+    // Stats devem voltar ao original
+    struct pmm_stats stats_restored = pmm_get_stats();
+    test_result("Stats restaurados apos free",
+                stats_restored.used_frames == stats.used_frames, NULL);
+
+    // Double-free: liberar frame já livre não deve crashar
+    pmm_free_frame(frame1);
+    struct pmm_stats stats_dbl = pmm_get_stats();
+    test_result("Double-free seguro (stats inalterados)",
+                stats_dbl.used_frames == stats.used_frames, NULL);
+
+    // Frame 0 (NULL) nunca deve ser alocável
+    test_result("Frame 0x0 marcado como usado", pmm_is_frame_used(0), NULL);
+
+    // Kernel region deve estar protegida
+    test_result("Kernel (0x100000) protegido", pmm_is_frame_used(0x100000), NULL);
+}
+
+// ============================================================
+// 10. Teste do sistema de Comandos
 // ============================================================
 static void test_commands(void) {
     test_header("Sistema de Comandos");
@@ -451,8 +518,8 @@ static void test_commands(void) {
     test_result("Pelo menos 4 comandos", count >= 4, NULL);
 
     // Verifica se cada comando base existe
-    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test"};
-    int num_expected = 5;
+    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem"};
+    int num_expected = 6;
 
     for (int i = 0; i < num_expected; i++) {
         const command_t *cmd = commands_find(expected[i]);
@@ -498,6 +565,7 @@ void cmd_test(const char *args) {
     test_memory();
     test_keyboard();
     test_io_ports();
+    test_pmm();
     test_commands();
 
     // Resumo final
