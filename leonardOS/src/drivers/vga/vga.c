@@ -1,12 +1,31 @@
 // LeonardOS - Driver VGA Text Mode
-// Suporte completo UTF-8 -> CP437 + cores
+// Suporte completo UTF-8 -> CP437 + cores + scrollback
 
 #include "vga.h"
+#include "../../common/io.h"
 
 // Endereço da memória VGA (80x25 texto)
 #define VGA_MEMORY ((unsigned char *)0xB8000)
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
+
+// ============================================================
+// Scrollback buffer
+// Armazena todo o histórico de saída (caractere + atributo)
+// ============================================================
+#define SCROLLBACK_LINES 200
+
+// Buffer: cada célula tem 2 bytes (char + attr), 80 colunas
+static unsigned char scrollback[SCROLLBACK_LINES * VGA_WIDTH * 2];
+
+// Linha lógica atual de escrita no scrollback (posição absoluta, cresce sem limite)
+static int sb_write_line = 0;
+
+// Total de linhas válidas no scrollback
+static int sb_total_lines = 0;
+
+// Offset de visualização: 0 = bottom (acompanhando output), >0 = rolado para cima
+static int sb_view_offset = 0;
 
 static int cursor_row = 0;
 static int cursor_col = 0;
@@ -282,7 +301,82 @@ static int vga_index(int row, int col) {
     return (row * VGA_WIDTH + col) * 2;
 }
 
-// Limpa a tela (usa cor atual)
+// ============================================================
+// Scrollback: funções internas
+// ============================================================
+
+// Índice no buffer circular do scrollback para uma linha lógica
+static int sb_line_index(int logical_line) {
+    return ((logical_line % SCROLLBACK_LINES) * VGA_WIDTH * 2);
+}
+
+// Escreve uma célula no scrollback na posição (row, col) relativa ao cursor_row lógico
+static void sb_write_cell(int row, int col, unsigned char ch, unsigned char attr) {
+    int line = sb_write_line - (VGA_HEIGHT - 1) + row;
+    if (line < 0) line = 0;
+    int idx = sb_line_index(line) + col * 2;
+    scrollback[idx] = ch;
+    scrollback[idx + 1] = attr;
+}
+
+// Limpa uma linha do scrollback
+static void sb_clear_line(int logical_line) {
+    int idx = sb_line_index(logical_line);
+    for (int c = 0; c < VGA_WIDTH; c++) {
+        scrollback[idx + c * 2] = ' ';
+        scrollback[idx + c * 2 + 1] = current_attr;
+    }
+}
+
+// Atualiza o cursor de hardware do VGA
+static void vga_update_cursor(void) {
+    // Se estamos rolados para cima, esconde o cursor
+    if (sb_view_offset > 0) {
+        // Posiciona cursor fora da tela
+        unsigned short pos = VGA_WIDTH * VGA_HEIGHT;
+        outb(0x3D4, 14);
+        outb(0x3D5, (pos >> 8) & 0xFF);
+        outb(0x3D4, 15);
+        outb(0x3D5, pos & 0xFF);
+    } else {
+        unsigned short pos = cursor_row * VGA_WIDTH + cursor_col;
+        outb(0x3D4, 14);
+        outb(0x3D5, (pos >> 8) & 0xFF);
+        outb(0x3D4, 15);
+        outb(0x3D5, pos & 0xFF);
+    }
+}
+
+// Redesenha a tela VGA a partir do scrollback, com o offset de visualização
+static void vga_refresh_from_scrollback(void) {
+    unsigned char *vga = VGA_MEMORY;
+
+    // A linha do fundo do scrollback é sb_write_line
+    // Queremos mostrar as linhas: (sb_write_line - sb_view_offset - VGA_HEIGHT + 1) até (sb_write_line - sb_view_offset)
+    int bottom_line = sb_write_line - sb_view_offset;
+    int top_line = bottom_line - VGA_HEIGHT + 1;
+
+    for (int screen_row = 0; screen_row < VGA_HEIGHT; screen_row++) {
+        int logical_line = top_line + screen_row;
+        if (logical_line < 0 || logical_line > sb_write_line) {
+            // Linha fora do range: preenche com espaços
+            for (int c = 0; c < VGA_WIDTH; c++) {
+                vga[(screen_row * VGA_WIDTH + c) * 2] = ' ';
+                vga[(screen_row * VGA_WIDTH + c) * 2 + 1] = current_attr;
+            }
+        } else {
+            int idx = sb_line_index(logical_line);
+            for (int c = 0; c < VGA_WIDTH; c++) {
+                vga[(screen_row * VGA_WIDTH + c) * 2] = scrollback[idx + c * 2];
+                vga[(screen_row * VGA_WIDTH + c) * 2 + 1] = scrollback[idx + c * 2 + 1];
+            }
+        }
+    }
+
+    vga_update_cursor();
+}
+
+// Limpa a tela e o scrollback (usa cor atual)
 void vga_clear(void) {
     unsigned char *vga = VGA_MEMORY;
     
@@ -290,14 +384,30 @@ void vga_clear(void) {
         vga[i * 2] = ' ';
         vga[i * 2 + 1] = current_attr;
     }
+
+    // Limpa scrollback
+    for (int i = 0; i < SCROLLBACK_LINES * VGA_WIDTH * 2; i += 2) {
+        scrollback[i] = ' ';
+        scrollback[i + 1] = current_attr;
+    }
     
+    sb_write_line = 0;
+    sb_total_lines = 0;
+    sb_view_offset = 0;
     cursor_row = 0;
     cursor_col = 0;
+    vga_update_cursor();
 }
 
 // Escreve um byte CP437 com atributo de cor específico (uso interno)
 static void vga_putbyte_attr(unsigned char c, unsigned char attr) {
     unsigned char *vga = VGA_MEMORY;
+
+    // Qualquer escrita volta para o fundo do scrollback
+    if (sb_view_offset > 0) {
+        sb_view_offset = 0;
+        vga_refresh_from_scrollback();
+    }
     
     if (c == '\n') {
         cursor_row++;
@@ -308,33 +418,46 @@ static void vga_putbyte_attr(unsigned char c, unsigned char attr) {
             int idx = vga_index(cursor_row, cursor_col);
             vga[idx] = ' ';
             vga[idx + 1] = attr;
+            sb_write_cell(cursor_row, cursor_col, ' ', attr);
         }
     } else {
         int idx = vga_index(cursor_row, cursor_col);
         vga[idx] = c;
         vga[idx + 1] = attr;
+        sb_write_cell(cursor_row, cursor_col, c, attr);
         cursor_col++;
     }
 
-    // Scroll se necessário
+    // Wrap de coluna
     if (cursor_col >= VGA_WIDTH) {
         cursor_col = 0;
         cursor_row++;
     }
     
     if (cursor_row >= VGA_HEIGHT) {
-        // Scroll up: move tudo 1 linha para cima
+        // Avança o scrollback
+        sb_write_line++;
+        if (sb_total_lines < SCROLLBACK_LINES) {
+            sb_total_lines++;
+        }
+
+        // Limpa a nova linha no scrollback
+        sb_clear_line(sb_write_line);
+
+        // Scroll up na tela VGA
         for (int i = 0; i < (VGA_HEIGHT - 1) * VGA_WIDTH; i++) {
             vga[i * 2] = vga[(i + VGA_WIDTH) * 2];
             vga[i * 2 + 1] = vga[(i + VGA_WIDTH) * 2 + 1];
         }
-        // Limpa última linha
+        // Limpa última linha na tela
         for (int i = 0; i < VGA_WIDTH; i++) {
             vga[((VGA_HEIGHT - 1) * VGA_WIDTH + i) * 2] = ' ';
             vga[((VGA_HEIGHT - 1) * VGA_WIDTH + i) * 2 + 1] = current_attr;
         }
         cursor_row = VGA_HEIGHT - 1;
     }
+
+    vga_update_cursor();
 }
 
 // Escreve um byte CP437 com a cor global atual (uso interno)
@@ -414,5 +537,41 @@ void vga_puthex(unsigned long x) {
     
     while (i > 0) {
         vga_putbyte(buf[--i]);
+    }
+}
+
+// ============================================================
+// Scroll público (Page Up / Page Down)
+// ============================================================
+
+// Rola N linhas para cima (mostra histórico)
+void vga_scroll_up(int lines) {
+    // Máximo que podemos rolar = total de linhas salvas - as visíveis
+    int max_offset = sb_write_line - VGA_HEIGHT + 1;
+    if (max_offset < 0) max_offset = 0;
+
+    sb_view_offset += lines;
+    if (sb_view_offset > max_offset) {
+        sb_view_offset = max_offset;
+    }
+
+    vga_refresh_from_scrollback();
+}
+
+// Rola N linhas para baixo (volta ao presente)
+void vga_scroll_down(int lines) {
+    sb_view_offset -= lines;
+    if (sb_view_offset < 0) {
+        sb_view_offset = 0;
+    }
+
+    vga_refresh_from_scrollback();
+}
+
+// Volta imediatamente para o fundo (output atual)
+void vga_scroll_to_bottom(void) {
+    if (sb_view_offset > 0) {
+        sb_view_offset = 0;
+        vga_refresh_from_scrollback();
     }
 }

@@ -22,6 +22,7 @@ CMD_HELP_C = src/commands/cmd_help.c
 CMD_CLEAR_C = src/commands/cmd_clear.c
 CMD_SYSINFO_C = src/commands/cmd_sysinfo.c
 CMD_HALT_C = src/commands/cmd_halt.c
+CMD_TEST_C = src/commands/cmd_test.c
 
 OBJ_BOOT = build/boot.o
 OBJ_KERNEL = build/kernel.o
@@ -39,9 +40,11 @@ OBJ_CMD_HELP = build/cmd_help.o
 OBJ_CMD_CLEAR = build/cmd_clear.o
 OBJ_CMD_SYSINFO = build/cmd_sysinfo.o
 OBJ_CMD_HALT = build/cmd_halt.o
+OBJ_CMD_TEST = build/cmd_test.o
 OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
           $(OBJ_GDT) $(OBJ_GDT_FLUSH) $(OBJ_IDT) $(OBJ_ISR) $(OBJ_ISR_STUB) $(OBJ_PIC) \
-          $(OBJ_CMD_COMMANDS) $(OBJ_CMD_HELP) $(OBJ_CMD_CLEAR) $(OBJ_CMD_SYSINFO) $(OBJ_CMD_HALT)
+          $(OBJ_CMD_COMMANDS) $(OBJ_CMD_HELP) $(OBJ_CMD_CLEAR) $(OBJ_CMD_SYSINFO) $(OBJ_CMD_HALT) \
+          $(OBJ_CMD_TEST)
 
 TARGET = build/kernel.elf
 ISO = build/leonardos.iso
@@ -112,6 +115,10 @@ build/cmd_sysinfo.o: $(CMD_SYSINFO_C)
 	$(CC) $(CFLAGS) $< -o $@
 
 build/cmd_halt.o: $(CMD_HALT_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/cmd_test.o: $(CMD_TEST_C)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@
 

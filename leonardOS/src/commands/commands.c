@@ -6,6 +6,7 @@
 #include "cmd_clear.h"
 #include "cmd_sysinfo.h"
 #include "cmd_halt.h"
+#include "cmd_test.h"
 
 // ============================================================
 // Tabela de comandos
@@ -17,6 +18,7 @@ static const command_t command_table[] = {
     { "clear",   "limpa a tela",                    cmd_clear   },
     { "sysinfo", "exibe informacoes do sistema",    cmd_sysinfo },
     { "halt",    "desliga o kernel",                cmd_halt    },
+    { "test",    "teste automatizado do kernel",    cmd_test    },
 };
 
 static const int command_count = sizeof(command_table) / sizeof(command_table[0]);

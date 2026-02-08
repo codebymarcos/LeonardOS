@@ -22,4 +22,9 @@ void vga_puthex(unsigned long x);
 void vga_putchar_color(char c, unsigned char attr);
 void vga_puts_color(const char *s, unsigned char attr);
 
+// Scrollback (histórico de saída)
+void vga_scroll_up(int lines);      // Rola para cima (Page Up)
+void vga_scroll_down(int lines);    // Rola para baixo (Page Down)
+void vga_scroll_to_bottom(void);    // Volta ao fundo
+
 #endif

@@ -17,6 +17,9 @@ static volatile unsigned char kbd_buffer[KBD_BUFFER_SIZE];
 static volatile int kbd_head = 0;
 static volatile int kbd_tail = 0;
 
+// Flag para prefixo 0xE0 (teclas estendidas)
+static volatile int kbd_extended = 0;
+
 // Mapa de scancodes para ASCII (US layout simplificado)
 static const char scancode_map[128] = {
     0,    27,  '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b', '\t',
@@ -30,7 +33,7 @@ static const char scancode_map[128] = {
 };
 
 // Adiciona caractere ao buffer
-static void kbd_enqueue(char c) {
+static void kbd_enqueue(unsigned char c) {
     if (c == 0) return;
     
     int next_head = (kbd_head + 1) % KBD_BUFFER_SIZE;
@@ -46,14 +49,35 @@ static void kbd_irq_handler(struct isr_frame *frame) {
 
     unsigned char scancode = inb(KBD_DATA_PORT);
 
+    // Prefixo de tecla estendida
+    if (scancode == 0xE0) {
+        kbd_extended = 1;
+        return;
+    }
+
     // Ignora key release (bit 7 = 1)
     if (scancode & 0x80) {
+        kbd_extended = 0;
         return;
+    }
+
+    if (kbd_extended) {
+        kbd_extended = 0;
+        // Scancodes estendidos (após 0xE0)
+        switch (scancode) {
+            case 0x49: kbd_enqueue(KEY_PAGE_UP);   return;  // Page Up
+            case 0x51: kbd_enqueue(KEY_PAGE_DOWN); return;  // Page Down
+            case 0x48: kbd_enqueue(KEY_ARROW_UP);  return;  // Arrow Up
+            case 0x50: kbd_enqueue(KEY_ARROW_DOWN); return; // Arrow Down
+            case 0x47: kbd_enqueue(KEY_HOME);      return;  // Home
+            case 0x4F: kbd_enqueue(KEY_END);       return;  // End
+            default: return;  // Outra tecla estendida, ignora
+        }
     }
 
     if (scancode < 128) {
         char c = scancode_map[scancode];
-        kbd_enqueue(c);
+        kbd_enqueue((unsigned char)c);
     }
 }
 
@@ -83,11 +107,41 @@ int kbd_has_char(void) {
     return kbd_head != kbd_tail;
 }
 
-// Lê uma linha (até newline) com echo
+// Lê uma linha (até newline) com echo e suporte a scroll
 void kbd_read_line(char *buf, int maxlen) {
     int i = 0;
     while (i < maxlen - 1) {
         char c = kbd_getchar();
+
+        // Teclas especiais de scroll (tratadas transparentemente)
+        if ((unsigned char)c == KEY_PAGE_UP) {
+            vga_scroll_up(5);
+            continue;
+        }
+        if ((unsigned char)c == KEY_PAGE_DOWN) {
+            vga_scroll_down(5);
+            continue;
+        }
+        if ((unsigned char)c == KEY_ARROW_UP) {
+            vga_scroll_up(1);
+            continue;
+        }
+        if ((unsigned char)c == KEY_ARROW_DOWN) {
+            vga_scroll_down(1);
+            continue;
+        }
+        if ((unsigned char)c == KEY_HOME) {
+            vga_scroll_up(200);
+            continue;
+        }
+        if ((unsigned char)c == KEY_END) {
+            vga_scroll_to_bottom();
+            continue;
+        }
+
+        // Qualquer tecla de texto volta ao fundo
+        vga_scroll_to_bottom();
+
         if (c == '\n' || c == '\r') {
             break;
         }
