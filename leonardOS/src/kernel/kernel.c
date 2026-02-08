@@ -4,9 +4,14 @@
 #include "drivers/vga/vga.h"
 #include "common/colors.h"
 #include "cpu/gdt.h"
+#include "cpu/isr.h"
+#include "drivers/pic/pic.h"
+#include "drivers/keyboard/keyboard.h"
 #include "shell/shell.h"
 
 void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multiboot_info) {
+    (void)multiboot_info;
+
     // Inicializa VGA
     vga_set_color(THEME_DEFAULT);
     vga_clear();
@@ -24,11 +29,32 @@ void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multib
         while (1);
     }
     
-    // Inicializa GDT (Global Descriptor Table)
+    // Inicializa GDT
     gdt_init();
     vga_puts_color("[OK] ", THEME_BOOT_OK);
     vga_puts_color("GDT carregada\n", THEME_BOOT);
 
+    // Inicializa PIC (remapeia IRQs para INT 32-47)
+    pic_init();
+    vga_puts_color("[OK] ", THEME_BOOT_OK);
+    vga_puts_color("PIC remapeado\n", THEME_BOOT);
+
+    // Inicializa ISRs e IDT
+    isr_init();
+    vga_puts_color("[OK] ", THEME_BOOT_OK);
+    vga_puts_color("IDT carregada (ISR + IRQ)\n", THEME_BOOT);
+
+    // Inicializa teclado (IRQ1)
+    kbd_init();
+    vga_puts_color("[OK] ", THEME_BOOT_OK);
+    vga_puts_color("Teclado PS/2 (IRQ1)\n", THEME_BOOT);
+
+    // Habilita interrupções
+    asm volatile("sti");
+    vga_puts_color("[OK] ", THEME_BOOT_OK);
+    vga_puts_color("Interrupcoes habilitadas\n", THEME_BOOT);
+
+    vga_puts("\n");
     vga_puts_color("Bootloader: ", THEME_LABEL);
     vga_puts_color("GRUB (Multiboot2 32-bit)\n", THEME_VALUE);
     vga_puts_color("Arquitetura: ", THEME_LABEL);

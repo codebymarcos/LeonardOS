@@ -1,18 +1,21 @@
 // LeonardOS - Driver Teclado PS/2
-// Lê de uma fila simples
+// Baseado em IRQ1 (interrupção de hardware)
 
 #include "keyboard.h"
 #include "../vga/vga.h"
+#include "../pic/pic.h"
+#include "../../cpu/isr.h"
+#include "../../common/io.h"
 
 // Portas I/O PS/2
-#define KBD_DATA_PORT 0x60
+#define KBD_DATA_PORT   0x60
 #define KBD_STATUS_PORT 0x64
 
 // Buffer circular de teclado
 #define KBD_BUFFER_SIZE 256
-static unsigned char kbd_buffer[KBD_BUFFER_SIZE];
-static int kbd_head = 0;
-static int kbd_tail = 0;
+static volatile unsigned char kbd_buffer[KBD_BUFFER_SIZE];
+static volatile int kbd_head = 0;
+static volatile int kbd_tail = 0;
 
 // Mapa de scancodes para ASCII (US layout simplificado)
 static const char scancode_map[128] = {
@@ -26,20 +29,6 @@ static const char scancode_map[128] = {
     0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0
 };
 
-// Lê status da porta do teclado
-static unsigned char kbd_read_status(void) {
-    unsigned char status;
-    asm volatile("inb %1, %0" : "=a" (status) : "Nd" (KBD_STATUS_PORT));
-    return status;
-}
-
-// Lê dados do teclado
-static unsigned char kbd_read_data(void) {
-    unsigned char data;
-    asm volatile("inb %1, %0" : "=a" (data) : "Nd" (KBD_DATA_PORT));
-    return data;
-}
-
 // Adiciona caractere ao buffer
 static void kbd_enqueue(char c) {
     if (c == 0) return;
@@ -51,30 +40,37 @@ static void kbd_enqueue(char c) {
     }
 }
 
-// Handler de interrupção
-void kbd_interrupt_handler(void) {
-    unsigned char status = kbd_read_status();
-    
-    if ((status & 0x01) == 0) {
-        return;
-    }
-    
-    unsigned char scancode = kbd_read_data();
-    
+// Handler de interrupção IRQ1 - chamado automaticamente pelo PIC
+static void kbd_irq_handler(struct isr_frame *frame) {
+    (void)frame;
+
+    unsigned char scancode = inb(KBD_DATA_PORT);
+
+    // Ignora key release (bit 7 = 1)
     if (scancode & 0x80) {
         return;
     }
-    
+
     if (scancode < 128) {
         char c = scancode_map[scancode];
         kbd_enqueue(c);
     }
 }
 
-// Lê um caractere do buffer
+// Inicializa o driver de teclado (registra IRQ1)
+void kbd_init(void) {
+    // Registra handler para IRQ1 (INT 33)
+    isr_register_handler(IRQ_TO_INT(IRQ_KEYBOARD), kbd_irq_handler);
+
+    // Habilita IRQ1 no PIC
+    pic_unmask_irq(IRQ_KEYBOARD);
+}
+
+// Lê um caractere do buffer (bloqueia até haver dados)
 char kbd_getchar(void) {
     while (kbd_head == kbd_tail) {
-        kbd_interrupt_handler();
+        // Espera interrupção (CPU descansa até a próxima IRQ)
+        asm volatile("hlt");
     }
     
     char c = kbd_buffer[kbd_tail];
@@ -84,7 +80,6 @@ char kbd_getchar(void) {
 
 // Verifica se há caractere pronto
 int kbd_has_char(void) {
-    kbd_interrupt_handler();
     return kbd_head != kbd_tail;
 }
 
