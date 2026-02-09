@@ -33,7 +33,16 @@
 [v] Stack IP (IPv4 send/receive, checksum, routing)
 [v] ICMP (Echo Request/Reply, ping state tracking)
 [v] Comando ping (ICMP echo, timeout, estatisticas)
-[ ] UDP basico
-[ ] TCP basico
-[ ] API de sockets
+[v] UDP (datagramas, bind/unbind, recepção síncrona)
+[v] TCP (3-way handshake, estado, buffer circular, send/recv/close)
+[v] DNS resolver (query A, cache, QEMU DNS 10.0.2.3)
+[v] HTTP/1.0 client (GET, parse URL, headers, body)
+[v] Comandos web (nslookup, wget)
+[v] API de sockets (5 funções, TCP/UDP, 8 sockets simultâneos)
+[v] HTTP redirect (301/302/303/307/308, max 5 hops)
+[v] PIT timer (100Hz, interrupt-driven, pit_sleep_ms)
+[v] DNS dinâmico (configurável via ifconfig, usa net_config)
+[v] RTL8139 RX fix (ISR timing, ring buffer modulo, CAPR init)
+[v] Aumentar buffers (RTL8139 64KB, TCP 32KB, HTTP 8KB)
+[ ] TCP retransmission (timeout 500ms, 3 retries)s
 

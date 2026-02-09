@@ -47,6 +47,18 @@ void cmd_ifconfig(const char *args) {
         return;
     }
 
+    // ifconfig dns <a.b.c.d>
+    if (args && kstrncmp(args, "dns ", 4) == 0) {
+        ip_addr_t new_dns;
+        if (str_to_ip(args + 4, &new_dns)) {
+            net_set_dns(new_dns.octets[0], new_dns.octets[1], new_dns.octets[2], new_dns.octets[3]);
+            vga_puts_color("DNS atualizado.\n", THEME_SUCCESS);
+        } else {
+            vga_puts_color("Formato invalido. Use: ifconfig dns a.b.c.d\n", THEME_ERROR);
+        }
+        return;
+    }
+
     // Sem argumentos — exibe config
     vga_putchar('\n');
 
@@ -79,6 +91,11 @@ void cmd_ifconfig(const char *args) {
 
     vga_puts_color("    Gateway   ", THEME_LABEL);
     ip_to_str(cfg->gateway, ip_buf, sizeof(ip_buf));
+    vga_puts_color(ip_buf, THEME_VALUE);
+    vga_putchar('\n');
+
+    vga_puts_color("    DNS       ", THEME_LABEL);
+    ip_to_str(cfg->dns, ip_buf, sizeof(ip_buf));
     vga_puts_color(ip_buf, THEME_VALUE);
     vga_putchar('\n');
 

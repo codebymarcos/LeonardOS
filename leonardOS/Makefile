@@ -62,7 +62,15 @@ ETHERNET_C = src/net/ethernet.c
 ARP_C = src/net/arp.c
 IPV4_C = src/net/ipv4.c
 ICMP_C = src/net/icmp.c
+UDP_C = src/net/udp.c
+TCP_C = src/net/tcp.c
+DNS_C = src/net/dns.c
+HTTP_C = src/net/http.c
 CMD_PING_C = src/commands/cmd_ping.c
+CMD_NSLOOKUP_C = src/commands/cmd_nslookup.c
+CMD_WGET_C = src/commands/cmd_wget.c
+PIT_C = src/drivers/timer/pit.c
+SOCKET_C = src/net/socket.c
 
 OBJ_BOOT = build/boot.o
 OBJ_KERNEL = build/kernel.o
@@ -120,7 +128,15 @@ OBJ_ETHERNET = build/ethernet.o
 OBJ_ARP = build/arp.o
 OBJ_IPV4 = build/ipv4.o
 OBJ_ICMP = build/icmp.o
+OBJ_UDP = build/udp.o
+OBJ_TCP = build/tcp.o
+OBJ_DNS = build/dns.o
+OBJ_HTTP = build/http.o
 OBJ_CMD_PING = build/cmd_ping.o
+OBJ_CMD_NSLOOKUP = build/cmd_nslookup.o
+OBJ_CMD_WGET = build/cmd_wget.o
+OBJ_PIT = build/pit.o
+OBJ_SOCKET = build/socket.o
 OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
           $(OBJ_GDT) $(OBJ_GDT_FLUSH) $(OBJ_IDT) $(OBJ_ISR) $(OBJ_ISR_STUB) $(OBJ_PIC) \
           $(OBJ_CMD_COMMANDS) $(OBJ_CMD_HELP) $(OBJ_CMD_CLEAR) $(OBJ_CMD_SYSINFO) $(OBJ_CMD_HALT) \
@@ -134,7 +150,9 @@ OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
           $(OBJ_IDE) $(OBJ_LEONFS) $(OBJ_SCRIPT) \
           $(OBJ_PCI) $(OBJ_RTL8139) $(OBJ_NET_CONFIG) \
           $(OBJ_ETHERNET) $(OBJ_ARP) $(OBJ_IPV4) $(OBJ_ICMP) \
-          $(OBJ_CMD_PING)
+          $(OBJ_UDP) $(OBJ_TCP) $(OBJ_DNS) $(OBJ_HTTP) \
+          $(OBJ_CMD_PING) $(OBJ_CMD_NSLOOKUP) $(OBJ_CMD_WGET) \
+          $(OBJ_PIT) $(OBJ_SOCKET)
 
 TARGET = build/kernel.elf
 ISO = build/leonardos.iso
@@ -368,7 +386,39 @@ build/icmp.o: $(ICMP_C)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@
 
+build/udp.o: $(UDP_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/tcp.o: $(TCP_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/dns.o: $(DNS_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/http.o: $(HTTP_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
 build/cmd_ping.o: $(CMD_PING_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/cmd_nslookup.o: $(CMD_NSLOOKUP_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/cmd_wget.o: $(CMD_WGET_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/pit.o: $(PIT_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/socket.o: $(SOCKET_C)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@
 

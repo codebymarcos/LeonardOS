@@ -63,8 +63,11 @@
 #define RX_CFG_AB       (1 << 3)    // Accept Broadcast
 #define RX_CFG_WRAP     (1 << 7)    // Wrap mode (ring buffer)
 
-// RX buffer size: 8KB + 16 header + 1500 wrap safety
-#define RX_BUF_SIZE     (8192 + 16 + 1500)
+// RX buffer size: 64KB + 16 header + 1500 wrap safety
+#define RX_BUF_SIZE     (65536 + 16 + 1500)
+
+// Número de PMM frames para RX buffer (67052 bytes → 17 frames)
+#define RX_BUF_FRAMES   17
 
 // TX buffer size por descriptor
 #define TX_BUF_SIZE     RTL8139_BUF_SIZE
@@ -89,10 +92,10 @@ static uint8_t       mac_addr[ETH_ALEN];    // MAC address
 static uint8_t       irq_line = 0;          // IRQ number
 static nic_stats_t   stats;
 
-// RX buffer — 3 frames PMM contíguos (12KB, > RX_BUF_SIZE)
+// RX buffer — RX_BUF_FRAMES frames PMM contíguos (68KB)
 // Dentro do identity map, phys == virt
 static uint8_t *rx_buffer = NULL;
-static uint16_t rx_offset = 0;  // Offset de leitura atual no ring
+static uint32_t rx_offset = 0;  // Offset de leitura atual no ring (32-bit para 64K)
 
 // TX buffers — 4 descriptors, buffers estáticos
 // Alinhados a 4 bytes (uint32_t cast é seguro)
@@ -102,6 +105,9 @@ static uint8_t  tx_current = 0;  // Próximo descriptor a usar
 // Callback de recepção
 static rtl8139_rx_callback_t rx_callback = NULL;
 
+// Tamanho real do ring buffer do hardware (64K para bits 11:13=11)
+#define RX_RING_SIZE    65536
+
 // ============================================================
 // rtl8139_irq_handler — chamado pelo ISR dispatcher
 // ============================================================
@@ -109,6 +115,10 @@ static void rtl8139_irq_handler(struct isr_frame *frame) {
     (void)frame;
 
     uint16_t isr_status = inw(io_base + REG_ISR);
+
+    // Acknowledge PRIMEIRO — hardware pode setar novos bits durante processamento.
+    // RTL8139 requer ack antes de processar pacotes (level-triggered PCI interrupt).
+    outw(io_base + REG_ISR, isr_status);
 
     if (isr_status & INT_TX_OK) {
         stats.tx_packets++;
@@ -118,16 +128,46 @@ static void rtl8139_irq_handler(struct isr_frame *frame) {
         stats.tx_errors++;
     }
 
-    if (isr_status & INT_RX_OK) {
-        // Processa todos os pacotes pendentes no ring buffer
-        while (!(inb(io_base + REG_CMD) & 0x01)) {  // Bit 0 = buffer empty
+    if (isr_status & INT_RX_OVERFLOW) {
+        stats.rx_errors++;
+        // Reset do RX em caso de overflow
+        uint8_t cmd = inb(io_base + REG_CMD);
+        outb(io_base + REG_CMD, cmd & ~CMD_RX_ENABLE);
+        outb(io_base + REG_CMD, cmd | CMD_RX_ENABLE);
+        rx_offset = 0;
+        outw(io_base + REG_CAPR, 0xFFF0);  // CAPR initial = -16
+    }
+
+    if (isr_status & (INT_RX_OK | INT_RX_ERR)) {
+        // Processa todos os pacotes pendentes no ring buffer.
+        // Compara CAPR+16 vs CBR para detectar pacotes (mais confiável que BUFE bit).
+        while (1) {
+            uint8_t cmd_reg = inb(io_base + REG_CMD);
+            if (cmd_reg & 0x01) break;  // Buffer empty bit set — nada mais
+
             // Lê header do pacote
             rx_header_t *hdr = (rx_header_t *)(rx_buffer + rx_offset);
 
             if (!(hdr->status & RX_STATUS_ROK)) {
-                // Pacote com erro — pula
+                // Pacote com erro — pula este pacote
                 stats.rx_errors++;
-                break;
+
+                // Se não tem tamanho válido, faz reset
+                if (hdr->length == 0 || hdr->length > RTL8139_BUF_SIZE) {
+                    // Corrupto — reset RX
+                    uint8_t c = inb(io_base + REG_CMD);
+                    outb(io_base + REG_CMD, c & ~CMD_RX_ENABLE);
+                    outb(io_base + REG_CMD, c | CMD_RX_ENABLE);
+                    rx_offset = 0;
+                    outw(io_base + REG_CAPR, 0xFFF0);
+                    break;
+                }
+
+                // Avança offset passando o pacote com erro
+                rx_offset = (rx_offset + sizeof(rx_header_t) + hdr->length + 3) & ~3;
+                rx_offset %= RX_RING_SIZE;
+                outw(io_base + REG_CAPR, (uint16_t)(rx_offset - 16));
+                continue;
             }
 
             uint16_t pkt_len = hdr->length - 4;  // Remove CRC (4 bytes)
@@ -144,27 +184,14 @@ static void rtl8139_irq_handler(struct isr_frame *frame) {
                 }
             }
 
-            // Avança offset: header(4) + length, alinhado a 4 bytes
+            // Avança offset: header(4) + length, alinhado a 4 bytes (DWORD)
             rx_offset = (rx_offset + sizeof(rx_header_t) + hdr->length + 3) & ~3;
-            rx_offset %= RX_BUF_SIZE;
+            rx_offset %= RX_RING_SIZE;  // Ring wraps at 8K, not at BUF_SIZE
 
-            // Atualiza CAPR (offset - 16 por quirk do hardware)
-            outw(io_base + REG_CAPR, rx_offset - 16);
+            // Atualiza CAPR (offset - 16 por quirk do hardware RTL8139)
+            outw(io_base + REG_CAPR, (uint16_t)(rx_offset - 16));
         }
     }
-
-    if (isr_status & INT_RX_OVERFLOW) {
-        stats.rx_errors++;
-        // Reset do RX em caso de overflow
-        uint8_t cmd = inb(io_base + REG_CMD);
-        outb(io_base + REG_CMD, cmd & ~CMD_RX_ENABLE);
-        outb(io_base + REG_CMD, cmd | CMD_RX_ENABLE);
-        rx_offset = 0;
-        outw(io_base + REG_CAPR, 0);
-    }
-
-    // Acknowledge todas as interrupções processadas
-    outw(io_base + REG_ISR, isr_status);
 }
 
 // ============================================================
@@ -205,39 +232,31 @@ bool rtl8139_init(void) {
     mac_addr[4] = (uint8_t)(mac_high >> 0);
     mac_addr[5] = (uint8_t)(mac_high >> 8);
 
-    // 7. Aloca RX buffer — 3 frames PMM (12KB) para 8KB+16+1500 ring
+    // 7. Aloca RX buffer — RX_BUF_FRAMES frames PMM contíguos (68KB) para 64K ring
     // Identity map garante phys == virt
-    uint32_t frame0 = pmm_alloc_frame();
-    uint32_t frame1 = pmm_alloc_frame();
-    uint32_t frame2 = pmm_alloc_frame();
-    if (!frame0 || !frame1 || !frame2) {
-        if (frame0) pmm_free_frame(frame0);
-        if (frame1) pmm_free_frame(frame1);
-        if (frame2) pmm_free_frame(frame2);
-        return false;
-    }
-
-    // Verifica se os frames são contíguos
-    if (frame1 != frame0 + PMM_FRAME_SIZE || frame2 != frame1 + PMM_FRAME_SIZE) {
-        // Não contíguos — tenta de novo (libera e busca numa região limpa)
-        pmm_free_frame(frame0);
-        pmm_free_frame(frame1);
-        pmm_free_frame(frame2);
-
-        // Segunda tentativa: aloca mais frames até achar 3 contíguos
-        uint32_t frames[16];
+    // Estratégia: aloca frames sequencialmente até encontrar RX_BUF_FRAMES contíguos
+    uint32_t frame0 = 0;
+    {
+        uint32_t alloc_buf[64];  // Tenta até 64 frames
         int allocated = 0;
         bool found = false;
 
-        for (int i = 0; i < 16 && !found; i++) {
-            frames[i] = pmm_alloc_frame();
+        for (int i = 0; i < 64 && !found; i++) {
+            alloc_buf[i] = pmm_alloc_frame();
             allocated = i + 1;
-            if (!frames[i]) break;
+            if (!alloc_buf[i]) break;
 
-            if (i >= 2) {
-                if (frames[i] == frames[i-1] + PMM_FRAME_SIZE &&
-                    frames[i-1] == frames[i-2] + PMM_FRAME_SIZE) {
-                    frame0 = frames[i-2];
+            // Verifica se temos RX_BUF_FRAMES contíguos terminando aqui
+            if (i >= RX_BUF_FRAMES - 1) {
+                bool contiguous = true;
+                for (int j = 1; j < RX_BUF_FRAMES; j++) {
+                    if (alloc_buf[i - j + 1] != alloc_buf[i - j] + PMM_FRAME_SIZE) {
+                        contiguous = false;
+                        break;
+                    }
+                }
+                if (contiguous) {
+                    frame0 = alloc_buf[i - RX_BUF_FRAMES + 1];
                     found = true;
                 }
             }
@@ -245,8 +264,10 @@ bool rtl8139_init(void) {
 
         // Libera frames que não fazem parte do bloco contíguo
         for (int i = 0; i < allocated; i++) {
-            if (frames[i] && (frames[i] < frame0 || frames[i] >= frame0 + 3 * PMM_FRAME_SIZE)) {
-                pmm_free_frame(frames[i]);
+            if (alloc_buf[i] &&
+                (alloc_buf[i] < frame0 ||
+                 alloc_buf[i] >= frame0 + RX_BUF_FRAMES * PMM_FRAME_SIZE)) {
+                pmm_free_frame(alloc_buf[i]);
             }
         }
 
@@ -254,7 +275,7 @@ bool rtl8139_init(void) {
     }
 
     rx_buffer = (uint8_t *)frame0;
-    kmemset(rx_buffer, 0, 3 * PMM_FRAME_SIZE);
+    kmemset(rx_buffer, 0, RX_BUF_FRAMES * PMM_FRAME_SIZE);
     rx_offset = 0;
 
     // 8. Configura RX buffer address
@@ -263,15 +284,22 @@ bool rtl8139_init(void) {
     // 9. Configura Interrupt Mask — ativa RX OK, TX OK, erros
     outw(io_base + REG_IMR, INT_RX_OK | INT_RX_ERR | INT_TX_OK | INT_TX_ERR | INT_RX_OVERFLOW);
 
-    // 10. Configura RX: aceita broadcast + physical match, wrap, buffer 8KB
-    // Bits 11:13 = buffer size: 00 = 8K+16
-    outl(io_base + REG_RX_CONFIG, RX_CFG_APM | RX_CFG_AB | RX_CFG_AM | RX_CFG_WRAP);
+    // 10. Configura RX: aceita broadcast + physical match, wrap, buffer 64KB
+    // Bits 11:13 = buffer size: 11 = 64K+16
+    // Bits 24:25 = MXDMA (max DMA burst): 110 = unlimited
+    outl(io_base + REG_RX_CONFIG,
+         RX_CFG_APM | RX_CFG_AB | RX_CFG_AM | RX_CFG_WRAP |
+         (0x03 << 11) |    // 64K buffer
+         (0x06 << 24));    // Max DMA burst unlimited
 
     // 11. Configura TX: defaults (Max DMA burst = 1024, sem IFG)
     outl(io_base + REG_TX_CONFIG, 0x03000000);  // Max DMA burst size
 
     // 12. Habilita RX e TX
     outb(io_base + REG_CMD, CMD_RX_ENABLE | CMD_TX_ENABLE);
+
+    // CAPR inicial = 0xFFF0 (= rx_offset(0) - 16), padrão do hardware
+    outw(io_base + REG_CAPR, 0xFFF0);
 
     // 13. Registra IRQ handler
     isr_register_handler(IRQ_TO_INT(irq_line), rtl8139_irq_handler);

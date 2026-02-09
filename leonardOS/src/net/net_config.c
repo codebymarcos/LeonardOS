@@ -51,6 +51,16 @@ void net_set_gateway(uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
 }
 
 // ============================================================
+// net_set_dns
+// ============================================================
+void net_set_dns(uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
+    config.dns.octets[0] = a;
+    config.dns.octets[1] = b;
+    config.dns.octets[2] = c;
+    config.dns.octets[3] = d;
+}
+
+// ============================================================
 // net_init — detecta NIC + configura defaults
 // ============================================================
 void net_init(void) {
@@ -64,6 +74,7 @@ void net_init(void) {
         net_set_ip(10, 0, 2, 15);
         net_set_netmask(255, 255, 255, 0);
         net_set_gateway(10, 0, 2, 2);
+        net_set_dns(10, 0, 2, 3);
 
         vga_puts_color("[OK] ", THEME_BOOT_OK);
         vga_puts_color("NIC: RTL8139 MAC=", THEME_BOOT);

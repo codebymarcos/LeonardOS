@@ -61,6 +61,8 @@ void cmd_help(const char *args) {
     help_cmd("ifconfig","config de rede");
     help_cmd("netstat", "estatisticas da NIC");
     help_cmd("ping",    "testa conectividade");
+    help_cmd("nslookup","resolve DNS");
+    help_cmd("wget",    "download HTTP");
 
     help_section("Script");
     help_cmd("source",  "executar script .sh");

@@ -162,6 +162,13 @@ static void kbd_irq_handler(struct isr_frame *frame) {
     }
 
     if (scancode < 128) {
+        // Atalhos Ctrl+Shift+tecla
+        if (kbd_ctrl && kbd_shift) {
+            switch (scancode) {
+                case 0x1E: kbd_enqueue(':'); return;  // Ctrl+Shift+A = :
+            }
+        }
+
         // Atalhos Ctrl+tecla
         if (kbd_ctrl) {
             switch (scancode) {

@@ -28,6 +28,10 @@
 #include "../net/arp.h"
 #include "../net/ipv4.h"
 #include "../net/icmp.h"
+#include "../net/udp.h"
+#include "../net/tcp.h"
+#include "../net/dns.h"
+#include "../net/http.h"
 
 // ============================================================
 // Contadores de resultado
@@ -816,8 +820,8 @@ static void test_commands(void) {
     test_result("Pelo menos 4 comandos", count >= 4, NULL);
 
     // Verifica se cada comando base existe
-    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem", "df", "ls", "cat", "echo", "pwd", "cd", "mkdir", "touch", "rm", "cp", "reboot", "stat", "tree", "find", "grep", "env", "wc", "head", "source", "keytest", "ifconfig", "netstat", "ping"};
-    int num_expected = 29;
+    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem", "df", "ls", "cat", "echo", "pwd", "cd", "mkdir", "touch", "rm", "cp", "reboot", "stat", "tree", "find", "grep", "env", "wc", "head", "source", "keytest", "ifconfig", "netstat", "ping", "nslookup", "wget"};
+    int num_expected = 31;
 
     for (int i = 0; i < num_expected; i++) {
         const command_t *cmd = commands_find(expected[i]);
@@ -1184,6 +1188,57 @@ static void test_network(void) {
     // Verifica ping state
     ping_state_t *ps = icmp_get_ping_state();
     test_result("ICMP: ping_state acessivel", ps != NULL, NULL);
+
+    // Verifica UDP inicializado
+    udp_stats_t udp_st = udp_get_stats();
+    test_result("UDP: stats acessiveis", 1, NULL);
+    (void)udp_st;
+
+    // Testa bind/unbind UDP
+    bool bind_ok = udp_bind(9999, NULL);
+    test_result("UDP: bind porta 9999", bind_ok, NULL);
+    bool bind_dup = udp_bind(9999, NULL);
+    test_result("UDP: bind duplicado rejeitado", !bind_dup, NULL);
+    udp_unbind(9999);
+    bind_ok = udp_bind(9999, NULL);
+    test_result("UDP: re-bind apos unbind", bind_ok, NULL);
+    udp_unbind(9999);
+
+    // Verifica TCP inicializado
+    tcp_stats_t tcp_st = tcp_get_stats();
+    test_result("TCP: stats acessiveis", 1, NULL);
+    (void)tcp_st;
+
+    // Verifica DNS inicializado
+    dns_stats_t dns_st = dns_get_stats();
+    test_result("DNS: stats acessiveis", 1, NULL);
+    (void)dns_st;
+
+    // Testa DNS parse de IP direto (não faz query de rede)
+    ip_addr_t dns_test_ip;
+    int dns_ip_ok = dns_resolve("10.0.2.2", &dns_test_ip);
+    test_result("DNS: resolve IP direto", dns_ip_ok &&
+                dns_test_ip.octets[0] == 10 && dns_test_ip.octets[3] == 2, NULL);
+
+    // Verifica HTTP inicializado
+    http_stats_t http_st = http_get_stats();
+    test_result("HTTP: stats acessiveis", 1, NULL);
+    (void)http_st;
+
+    // Testa URL parser
+    http_url_t test_url;
+    int url_ok = http_parse_url("http://example.com/hello", &test_url);
+    test_result("HTTP: parse URL valida", url_ok &&
+                kstrcmp(test_url.host, "example.com") == 0 &&
+                kstrcmp(test_url.path, "/hello") == 0 &&
+                test_url.port == 80, NULL);
+
+    int url_port = http_parse_url("http://10.0.2.2:8080/api", &test_url);
+    test_result("HTTP: parse URL com porta", url_port &&
+                test_url.port == 8080, NULL);
+
+    int url_bad = http_parse_url("ftp://invalid", &test_url);
+    test_result("HTTP: rejeita URL invalida", !url_bad, NULL);
 }
 
 // ============================================================

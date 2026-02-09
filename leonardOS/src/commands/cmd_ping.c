@@ -17,23 +17,13 @@
 #include "../net/net_config.h"
 #include "../net/icmp.h"
 #include "../net/arp.h"
+#include "../drivers/timer/pit.h"
 
 // ============================================================
-// Delay simples via PIT (busy-wait)
-// PIT roda a ~1.193182 MHz no modo padrão (counter 0)
-// Leitura do counter: port 0x40 (lo) 0x40 (hi) após latch (0x43=0x00)
+// Delay preciso via PIT timer
 // ============================================================
-
-// Espera ~ms milissegundos (aproximado via busy loop)
 static void ping_delay_ms(uint32_t ms) {
-    // PIT count: ~1193 ticks per ms
-    // Cada iteração de busy wait consome ~alguns ciclos
-    // Com ~1193 ticks/ms no PIT, fazemos polling
-    for (uint32_t i = 0; i < ms; i++) {
-        for (volatile uint32_t j = 0; j < 5000; j++) {
-            // ~1ms a frequências típicas de QEMU
-        }
-    }
+    pit_sleep_ms(ms);
 }
 
 // Espera um reply ICMP com timeout (~2 segundos)

@@ -16,6 +16,7 @@ typedef struct {
     ip_addr_t ip;           // IP do host
     ip_addr_t netmask;      // Máscara de sub-rede
     ip_addr_t gateway;      // Gateway padrão
+    ip_addr_t dns;          // DNS resolver padrão
     uint8_t   mac[6];       // MAC address (preenchido pelo driver)
     bool      configured;   // Se a rede foi configurada
     bool      nic_present;  // Se a NIC está presente
@@ -36,6 +37,9 @@ void net_set_netmask(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
 
 // Configura gateway
 void net_set_gateway(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
+
+// Configura DNS resolver
+void net_set_dns(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
 
 // Inicializa rede: detecta NIC, configura defaults
 // Chamado pelo kernel no boot

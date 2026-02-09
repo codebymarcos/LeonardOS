@@ -31,6 +31,8 @@
 #include "cmd_ifconfig.h"
 #include "cmd_netstat.h"
 #include "cmd_ping.h"
+#include "cmd_nslookup.h"
+#include "cmd_wget.h"
 
 // ============================================================
 // Tabela de comandos
@@ -67,6 +69,8 @@ static const command_t command_table[] = {
     { "ifconfig", "configuracao de rede",           cmd_ifconfig },
     { "netstat",  "estatisticas de rede",           cmd_netstat  },
     { "ping",     "testa conectividade (ICMP)",     cmd_ping     },
+    { "nslookup", "resolve DNS",                    cmd_nslookup },
+    { "wget",     "download HTTP",                  cmd_wget     },
 };
 
 static const int command_count = sizeof(command_table) / sizeof(command_table[0]);

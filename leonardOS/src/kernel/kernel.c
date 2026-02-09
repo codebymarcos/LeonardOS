@@ -19,6 +19,12 @@
 #include "net/arp.h"
 #include "net/ipv4.h"
 #include "net/icmp.h"
+#include "net/udp.h"
+#include "net/tcp.h"
+#include "net/dns.h"
+#include "net/http.h"
+#include "net/socket.h"
+#include "drivers/timer/pit.h"
 #include "shell/shell.h"
 
 void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multiboot_info) {
@@ -140,12 +146,20 @@ void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multib
         }
     }
 
-    // Inicializa rede (PCI + RTL8139 + Ethernet + ARP + IPv4 + ICMP)
+    // Inicializa rede (PCI + RTL8139 + Ethernet + ARP + IPv4 + ICMP + UDP + TCP + DNS + HTTP + Socket)
     net_init();
     eth_init();
     arp_init();
     ipv4_init();
     icmp_init();
+    udp_init();
+    tcp_init();
+    dns_init();
+    http_init();
+    socket_init();
+
+    // Inicializa PIT timer (100Hz) — deve ser antes do sti
+    pit_init();
 
     // Habilita interrupções
     asm volatile("sti");
