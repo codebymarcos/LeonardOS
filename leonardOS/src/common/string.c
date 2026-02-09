@@ -60,6 +60,38 @@ void kstrcat(char *dst, const char *src, int max) {
 }
 
 // ============================================================
+// kstrstr — busca substring
+// ============================================================
+const char *kstrstr(const char *haystack, const char *needle) {
+    if (!haystack || !needle) return NULL;
+    if (needle[0] == '\0') return haystack;
+
+    int nlen = kstrlen(needle);
+    int hlen = kstrlen(haystack);
+    if (nlen > hlen) return NULL;
+
+    for (int i = 0; i <= hlen - nlen; i++) {
+        int match = 1;
+        for (int j = 0; j < nlen; j++) {
+            if (haystack[i + j] != needle[j]) {
+                match = 0;
+                break;
+            }
+        }
+        if (match) return &haystack[i];
+    }
+    return NULL;
+}
+
+// ============================================================
+// ktolower — converte para lowercase
+// ============================================================
+char ktolower(char c) {
+    if (c >= 'A' && c <= 'Z') return c + ('a' - 'A');
+    return c;
+}
+
+// ============================================================
 // kmemcpy — copia n bytes
 // ============================================================
 void kmemcpy(void *dst, const void *src, uint32_t n) {

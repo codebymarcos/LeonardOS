@@ -7,7 +7,9 @@
 //   Setores 9-72  : Tabela de inodes (64 setores = 512 inodes de 64 bytes cada)
 //   Setor 73+     : Blocos de dados (1 bloco = 1 setor = 512 bytes)
 //
-// Cada inode aponta para até 10 blocos diretos (5120 bytes por arquivo).
+// Cada inode aponta para até 10 blocos diretos + 1 bloco indireto.
+// Bloco indireto = 128 ponteiros × 512B = 64KB.
+// Max por arquivo: 10×512 + 128×512 = 70656 bytes (~69KB).
 // Inodes são indexados de 0 a 511. Inode 0 = diretório raiz.
 //
 // Diretórios: conteúdo é uma lista de dir_entry_t (nome + inode_num).
@@ -38,7 +40,8 @@
 #define LEONFS_MAX_INODES        512     // 64 setores * 8 inodes/setor
 #define LEONFS_MAX_BLOCKS        32768   // 8 setores bitmap * 512 bytes * 8 bits
 #define LEONFS_DIRECT_BLOCKS     10      // Blocos diretos por inode
-#define LEONFS_MAX_FILE_SIZE     (LEONFS_DIRECT_BLOCKS * LEONFS_BLOCK_SIZE)  // 5120 bytes
+#define LEONFS_INDIRECT_PTRS     (LEONFS_BLOCK_SIZE / sizeof(uint32_t))  // 128 ponteiros
+#define LEONFS_MAX_FILE_SIZE     ((LEONFS_DIRECT_BLOCKS + LEONFS_INDIRECT_PTRS) * LEONFS_BLOCK_SIZE)  // ~69KB
 #define LEONFS_MAX_NAME          60      // Nome máximo em dir_entry
 
 // Tipos de inode
@@ -69,7 +72,8 @@ typedef struct __attribute__((packed)) {
     uint16_t _pad2;
     uint32_t size;              // Tamanho em bytes
     uint32_t blocks[LEONFS_DIRECT_BLOCKS]; // Números de bloco (setor absoluto)
-    uint8_t  _reserved[64 - 48]; // Padding até 64 bytes
+    uint32_t indirect_block;    // Bloco indireto (setor absoluto, 0 = não usado)
+    uint8_t  _reserved[64 - 52]; // Padding até 64 bytes
 } leonfs_inode_t;
 
 // Entrada de diretório — 64 bytes

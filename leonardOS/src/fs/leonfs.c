@@ -252,6 +252,63 @@ static uint32_t node_inode_num(vfs_node_t *node) {
 }
 
 // ============================================================
+// Helpers para resolver bloco por índice (direto ou indireto)
+// ============================================================
+
+// Lê o número de bloco para um block_idx (direto: 0-9, indireto: 10+)
+// Retorna 0 se o bloco não está alocado
+static uint32_t inode_get_block(leonfs_inode_t *inode, uint32_t block_idx) {
+    if (block_idx < LEONFS_DIRECT_BLOCKS) {
+        return inode->blocks[block_idx];
+    }
+    // Bloco indireto
+    if (inode->indirect_block == 0) return 0;
+    uint32_t indirect_idx = block_idx - LEONFS_DIRECT_BLOCKS;
+    if (indirect_idx >= LEONFS_INDIRECT_PTRS) return 0;
+
+    uint8_t ind_buf[512];
+    uint32_t ind_sector = block_to_sector(inode->indirect_block);
+    if (!read_sector_to(ind_sector, ind_buf)) return 0;
+
+    uint32_t *ptrs = (uint32_t *)ind_buf;
+    return ptrs[indirect_idx];
+}
+
+// Seta o número de bloco para um block_idx (direto ou indireto)
+// Aloca o bloco indireto se necessário
+// Retorna true se sucesso
+static bool inode_set_block(leonfs_inode_t *inode, uint32_t block_idx, uint32_t block_num) {
+    if (block_idx < LEONFS_DIRECT_BLOCKS) {
+        inode->blocks[block_idx] = block_num;
+        return true;
+    }
+    // Bloco indireto
+    uint32_t indirect_idx = block_idx - LEONFS_DIRECT_BLOCKS;
+    if (indirect_idx >= LEONFS_INDIRECT_PTRS) return false;
+
+    // Aloca bloco indireto se necessário
+    if (inode->indirect_block == 0) {
+        uint32_t new_ind = block_alloc();
+        if (new_ind == (uint32_t)-1) return false;
+        inode->indirect_block = new_ind;
+        // Zera o bloco indireto
+        kmemset(sector_buf, 0, LEONFS_BLOCK_SIZE);
+        write_sector_from(block_to_sector(new_ind), sector_buf);
+    }
+
+    uint8_t ind_buf[512];
+    uint32_t ind_sector = block_to_sector(inode->indirect_block);
+    if (!read_sector_to(ind_sector, ind_buf)) return false;
+
+    uint32_t *ptrs = (uint32_t *)ind_buf;
+    ptrs[indirect_idx] = block_num;
+    return write_sector_from(ind_sector, ind_buf);
+}
+
+// Número máximo de blocos que um inode suporta
+#define LEONFS_MAX_BLOCKS_PER_INODE (LEONFS_DIRECT_BLOCKS + LEONFS_INDIRECT_PTRS)
+
+// ============================================================
 // Callbacks VFS — Arquivo
 // ============================================================
 
@@ -273,10 +330,11 @@ static uint32_t leonfs_vfs_read(vfs_node_t *node, uint32_t offset, uint32_t size
         uint32_t block_idx = file_offset / LEONFS_BLOCK_SIZE;
         uint32_t block_off = file_offset % LEONFS_BLOCK_SIZE;
 
-        if (block_idx >= LEONFS_DIRECT_BLOCKS) break;
-        if (inode.blocks[block_idx] == 0) break;
+        if (block_idx >= LEONFS_MAX_BLOCKS_PER_INODE) break;
+        uint32_t blk = inode_get_block(&inode, block_idx);
+        if (blk == 0) break;
 
-        uint32_t sector = block_to_sector(inode.blocks[block_idx]);
+        uint32_t sector = block_to_sector(blk);
         if (!read_sector_to(sector, sector_buf)) break;
 
         // Quantos bytes podemos ler deste bloco?
@@ -309,20 +367,22 @@ static uint32_t leonfs_vfs_write(vfs_node_t *node, uint32_t offset, uint32_t siz
         uint32_t block_idx = file_offset / LEONFS_BLOCK_SIZE;
         uint32_t block_off = file_offset % LEONFS_BLOCK_SIZE;
 
-        if (block_idx >= LEONFS_DIRECT_BLOCKS) break;
+        if (block_idx >= LEONFS_MAX_BLOCKS_PER_INODE) break;
 
         // Aloca bloco se necessário
-        if (inode.blocks[block_idx] == 0) {
+        uint32_t blk = inode_get_block(&inode, block_idx);
+        if (blk == 0) {
             uint32_t new_block = block_alloc();
             if (new_block == (uint32_t)-1) break;
-            inode.blocks[block_idx] = new_block;
+            if (!inode_set_block(&inode, block_idx, new_block)) break;
+            blk = new_block;
 
             // Zera o bloco novo
             kmemset(sector_buf, 0, LEONFS_BLOCK_SIZE);
             write_sector_from(block_to_sector(new_block), sector_buf);
         }
 
-        uint32_t sector = block_to_sector(inode.blocks[block_idx]);
+        uint32_t sector = block_to_sector(blk);
 
         // Lê bloco atual (para não perder dados em escrita parcial)
         if (!read_sector_to(sector, sector_buf)) break;
@@ -746,11 +806,27 @@ bool leonfs_remove(vfs_node_t *parent, const char *name) {
         }
     }
 
-    // Libera blocos de dados do alvo
+    // Libera blocos de dados do alvo (diretos)
     for (uint32_t b = 0; b < LEONFS_DIRECT_BLOCKS; b++) {
         if (target_inode.blocks[b] != 0) {
             block_free(target_inode.blocks[b]);
         }
+    }
+
+    // Libera blocos indiretos
+    if (target_inode.indirect_block != 0) {
+        // Lê o bloco indireto para liberar os dados apontados
+        uint8_t ind_buf[512];
+        if (read_sector_to(block_to_sector(target_inode.indirect_block), ind_buf)) {
+            uint32_t *ptrs = (uint32_t *)ind_buf;
+            for (uint32_t i = 0; i < LEONFS_INDIRECT_PTRS; i++) {
+                if (ptrs[i] != 0) {
+                    block_free(ptrs[i]);
+                }
+            }
+        }
+        // Libera o próprio bloco indireto
+        block_free(target_inode.indirect_block);
     }
 
     // Libera inode

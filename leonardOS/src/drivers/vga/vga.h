@@ -27,4 +27,12 @@ void vga_scroll_up(int lines);      // Rola para cima (Page Up)
 void vga_scroll_down(int lines);    // Rola para baixo (Page Down)
 void vga_scroll_to_bottom(void);    // Volta ao fundo
 
+// ============================================================
+// Captura de saída (para pipes)
+// Quando ativa, a saída vai para um buffer em vez da tela
+// ============================================================
+void vga_capture_start(char *buf, int max_len);  // Ativa captura
+int  vga_capture_stop(void);                      // Desativa e retorna bytes capturados
+int  vga_is_capturing(void);                      // Retorna 1 se capturando
+
 #endif

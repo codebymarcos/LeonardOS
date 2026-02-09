@@ -89,6 +89,9 @@
 // Arquivos (ls, tree, stat)
 #define THEME_FILE          VGA_COLOR(COLOR_LIGHT_GRAY, COLOR_BLACK)
 
+// Highlight (grep match)
+#define THEME_HIGHLIGHT     VGA_COLOR(COLOR_WHITE, COLOR_RED)
+
 // Banner / logo
 #define THEME_BANNER        VGA_COLOR(COLOR_LIGHT_CYAN, COLOR_BLACK)
 

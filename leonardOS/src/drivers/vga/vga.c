@@ -33,6 +33,14 @@ static int cursor_col = 0;
 // Cor global atual (padrão: tema default do colors.h)
 static unsigned char current_attr = THEME_DEFAULT;
 
+// ============================================================
+// Captura de saída (para pipes)
+// ============================================================
+static char  *capture_buf = NULL;
+static int    capture_max = 0;
+static int    capture_len = 0;
+static int    capturing   = 0;
+
 // Define a cor global
 void vga_set_color(unsigned char attr) {
     current_attr = attr;
@@ -401,6 +409,19 @@ void vga_clear(void) {
 
 // Escreve um byte CP437 com atributo de cor específico (uso interno)
 static void vga_putbyte_attr(unsigned char c, unsigned char attr) {
+    // Modo captura — desvia para buffer
+    if (capturing && capture_buf) {
+        if (c == '\n' || c == '\b' || (c >= 32 && c < 127)) {
+            if (c == '\b') {
+                if (capture_len > 0) capture_len--;
+            } else if (capture_len < capture_max - 1) {
+                capture_buf[capture_len++] = (char)c;
+                capture_buf[capture_len] = '\0';
+            }
+        }
+        return;
+    }
+
     unsigned char *vga = VGA_MEMORY;
 
     // Qualquer escrita volta para o fundo do scrollback
@@ -574,4 +595,32 @@ void vga_scroll_to_bottom(void) {
         sb_view_offset = 0;
         vga_refresh_from_scrollback();
     }
+}
+
+// ============================================================
+// Captura de saída (API pública)
+// ============================================================
+
+void vga_capture_start(char *buf, int max_len) {
+    capture_buf = buf;
+    capture_max = max_len;
+    capture_len = 0;
+    capturing   = 1;
+    if (buf) buf[0] = '\0';
+}
+
+int vga_capture_stop(void) {
+    capturing = 0;
+    int len = capture_len;
+    if (capture_buf && capture_len < capture_max) {
+        capture_buf[capture_len] = '\0';
+    }
+    capture_buf = NULL;
+    capture_max = 0;
+    capture_len = 0;
+    return len;
+}
+
+int vga_is_capturing(void) {
+    return capturing;
 }

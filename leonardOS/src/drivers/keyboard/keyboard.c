@@ -67,11 +67,40 @@ static void kbd_enqueue(unsigned char c) {
     }
 }
 
+// ============================================================
+// Modo diagnóstico (raw scancode)
+// ============================================================
+static int raw_mode = 0;
+static volatile unsigned char raw_scancode = 0;
+
+void kbd_set_raw_mode(int enabled) {
+    raw_mode = enabled;
+    raw_scancode = 0;
+}
+
+unsigned char kbd_get_raw_scancode(void) {
+    unsigned char sc = raw_scancode;
+    raw_scancode = 0;
+    return sc;
+}
+
 // Handler de interrupção IRQ1 - chamado automaticamente pelo PIC
 static void kbd_irq_handler(struct isr_frame *frame) {
     (void)frame;
 
     unsigned char scancode = inb(KBD_DATA_PORT);
+
+    // Modo diagnóstico: captura scancode bruto e encaminha para o buffer
+    if (raw_mode) {
+        raw_scancode = scancode;
+        // Ainda precisa ler o scancode para limpar o buffer do teclado
+        // Mas não processa nada — só armazena
+        // Enqueue ESC para acordar kbd_getchar() no cmd_keytest
+        if (!(scancode & 0x80) && scancode != 0xE0) {
+            kbd_enqueue(0x01);  // sinal dummy para acordar o loop
+        }
+        return;
+    }
 
     // Prefixo de tecla estendida
     if (scancode == 0xE0) {
@@ -118,8 +147,14 @@ static void kbd_irq_handler(struct isr_frame *frame) {
         switch (scancode) {
             case 0x49: kbd_enqueue(KEY_PAGE_UP);   return;
             case 0x51: kbd_enqueue(KEY_PAGE_DOWN); return;
-            case 0x48: kbd_enqueue(KEY_ARROW_UP);  return;
-            case 0x50: kbd_enqueue(KEY_ARROW_DOWN); return;
+            case 0x48:
+                if (kbd_ctrl) kbd_enqueue(KEY_CTRL_UP);
+                else kbd_enqueue(KEY_ARROW_UP);
+                return;
+            case 0x50:
+                if (kbd_ctrl) kbd_enqueue(KEY_CTRL_DOWN);
+                else kbd_enqueue(KEY_ARROW_DOWN);
+                return;
             case 0x47: kbd_enqueue(KEY_HOME);      return;
             case 0x4F: kbd_enqueue(KEY_END);       return;
             default: return;
@@ -127,6 +162,13 @@ static void kbd_irq_handler(struct isr_frame *frame) {
     }
 
     if (scancode < 128) {
+        // Atalhos Ctrl+tecla
+        if (kbd_ctrl) {
+            switch (scancode) {
+                case 0x1E: kbd_enqueue(';'); return;  // Ctrl+A = ;
+            }
+        }
+
         // Decide qual mapa usar
         int use_shift = kbd_shift;
 
@@ -167,9 +209,56 @@ int kbd_has_char(void) {
     return kbd_head != kbd_tail;
 }
 
-// Lê uma linha (até newline) com echo e suporte a scroll
+// ============================================================
+// Histórico de comandos
+// ============================================================
+#define HISTORY_SIZE 32
+#define HISTORY_LINE_MAX 256
+
+static char history[HISTORY_SIZE][HISTORY_LINE_MAX];
+static int history_count = 0;     // Quantas entradas já existem
+static int history_write = 0;     // Próxima posição de escrita (circular)
+
+// Adiciona uma linha ao histórico
+static void history_add(const char *line) {
+    if (!line || line[0] == '\0') return;
+
+    // Não duplica se igual ao último
+    if (history_count > 0) {
+        int last = (history_write - 1 + HISTORY_SIZE) % HISTORY_SIZE;
+        // Compara manualmente
+        const char *a = history[last];
+        const char *b = line;
+        int same = 1;
+        while (*a && *b) {
+            if (*a != *b) { same = 0; break; }
+            a++; b++;
+        }
+        if (*a != *b) same = 0;
+        if (same) return;
+    }
+
+    // Copia para o buffer
+    int i = 0;
+    while (line[i] && i < HISTORY_LINE_MAX - 1) {
+        history[history_write][i] = line[i];
+        i++;
+    }
+    history[history_write][i] = '\0';
+
+    history_write = (history_write + 1) % HISTORY_SIZE;
+    if (history_count < HISTORY_SIZE) history_count++;
+}
+
+// Lê uma linha (até newline) com echo, scroll e histórico Up/Down
 void kbd_read_line(char *buf, int maxlen) {
     int i = 0;
+    int hist_pos = -1;  // -1 = digitando novo, 0..count-1 = navegando
+
+    // Salva o que o usuário estava digitando antes de navegar
+    char saved_input[HISTORY_LINE_MAX];
+    saved_input[0] = '\0';
+
     while (i < maxlen - 1) {
         char c = kbd_getchar();
 
@@ -182,11 +271,11 @@ void kbd_read_line(char *buf, int maxlen) {
             vga_scroll_down(5);
             continue;
         }
-        if ((unsigned char)c == KEY_ARROW_UP) {
+        if ((unsigned char)c == KEY_CTRL_UP) {
             vga_scroll_up(1);
             continue;
         }
-        if ((unsigned char)c == KEY_ARROW_DOWN) {
+        if ((unsigned char)c == KEY_CTRL_DOWN) {
             vga_scroll_down(1);
             continue;
         }
@@ -196,6 +285,82 @@ void kbd_read_line(char *buf, int maxlen) {
         }
         if ((unsigned char)c == KEY_END) {
             vga_scroll_to_bottom();
+            continue;
+        }
+
+        // Arrow Up — histórico anterior
+        if ((unsigned char)c == KEY_ARROW_UP) {
+            vga_scroll_to_bottom();
+            if (history_count == 0) continue;
+
+            // Salva input atual se acabamos de começar a navegar
+            if (hist_pos == -1) {
+                int si = 0;
+                while (si < i && si < HISTORY_LINE_MAX - 1) {
+                    saved_input[si] = buf[si];
+                    si++;
+                }
+                saved_input[si] = '\0';
+            }
+
+            if (hist_pos == -1) {
+                hist_pos = 0;
+            } else if (hist_pos < history_count - 1) {
+                hist_pos++;
+            } else {
+                continue; // Já no mais antigo
+            }
+
+            // Apaga a linha atual na tela
+            while (i > 0) {
+                vga_putchar('\b');
+                i--;
+            }
+
+            // Copia do histórico (mais recente = hist_pos 0)
+            int idx = (history_write - 1 - hist_pos + HISTORY_SIZE) % HISTORY_SIZE;
+            i = 0;
+            while (history[idx][i] && i < maxlen - 1) {
+                buf[i] = history[idx][i];
+                vga_putchar(buf[i]);
+                i++;
+            }
+            buf[i] = '\0';
+            continue;
+        }
+
+        // Arrow Down — histórico mais recente
+        if ((unsigned char)c == KEY_ARROW_DOWN) {
+            vga_scroll_to_bottom();
+            if (hist_pos <= -1) continue;
+
+            // Apaga a linha atual na tela
+            while (i > 0) {
+                vga_putchar('\b');
+                i--;
+            }
+
+            hist_pos--;
+            if (hist_pos < 0) {
+                // Volta ao input original
+                hist_pos = -1;
+                i = 0;
+                while (saved_input[i] && i < maxlen - 1) {
+                    buf[i] = saved_input[i];
+                    vga_putchar(buf[i]);
+                    i++;
+                }
+                buf[i] = '\0';
+            } else {
+                int idx = (history_write - 1 - hist_pos + HISTORY_SIZE) % HISTORY_SIZE;
+                i = 0;
+                while (history[idx][i] && i < maxlen - 1) {
+                    buf[i] = history[idx][i];
+                    vga_putchar(buf[i]);
+                    i++;
+                }
+                buf[i] = '\0';
+            }
             continue;
         }
 
@@ -213,7 +378,11 @@ void kbd_read_line(char *buf, int maxlen) {
         } else if (c >= 32 && c < 127) {
             buf[i++] = c;
             vga_putchar(c);
+            hist_pos = -1;  // Reset histórico ao digitar
         }
     }
-    buf[i] = 0;
+    buf[i] = '\0';
+
+    // Salva no histórico
+    history_add(buf);
 }

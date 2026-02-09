@@ -22,6 +22,12 @@
 #include "cmd_stat.h"
 #include "cmd_tree.h"
 #include "cmd_find.h"
+#include "cmd_grep.h"
+#include "cmd_env.h"
+#include "cmd_wc.h"
+#include "cmd_head.h"
+#include "cmd_source.h"
+#include "cmd_keytest.h"
 
 // ============================================================
 // Tabela de comandos
@@ -49,6 +55,12 @@ static const command_t command_table[] = {
     { "stat",    "exibe informacoes de arquivo",          cmd_stat    },
     { "tree",    "arvore de diretorios",                   cmd_tree    },
     { "find",    "busca arquivos por nome",                cmd_find    },
+    { "grep",    "busca texto em arquivos",                 cmd_grep    },
+    { "env",     "lista/define variaveis de ambiente",       cmd_env     },
+    { "wc",      "conta linhas, palavras e bytes",           cmd_wc      },
+    { "head",    "exibe primeiras N linhas",                 cmd_head    },
+    { "source",  "executa um script .sh",                   cmd_source  },
+    { "keytest", "diagnostico de scancodes",                cmd_keytest },
 };
 
 static const int command_count = sizeof(command_table) / sizeof(command_table[0]);

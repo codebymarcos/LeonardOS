@@ -22,37 +22,72 @@ void cmd_echo(const char *args) {
         return;
     }
 
-    // Procura '>' no args para redirecionamento
+    // Procura '>' ou '>>' no args para redirecionamento (respeitando aspas)
     const char *redir = NULL;
+    int append_mode = 0;  // 1 = '>>' (append), 0 = '>' (overwrite)
     const char *p = args;
+    int in_quotes = 0;
     while (*p) {
-        if (*p == '>') {
+        if (*p == '"' && (p == args || *(p - 1) != '\\')) {
+            in_quotes = !in_quotes;
+        } else if (*p == '>' && !in_quotes) {
             redir = p;
+            if (*(p + 1) == '>') {
+                append_mode = 1;
+            }
             break;
         }
         p++;
     }
 
     if (!redir) {
-        // Sem redirecionamento: exibe no terminal
-        vga_puts(args);
+        // Sem redirecionamento: exibe no terminal (processando aspas e escapes)
+        p = args;
+        while (*p) {
+            if (*p == '"') {
+                p++; // pula aspas
+            } else if (*p == '\\' && *(p + 1)) {
+                p++; // pula backslash
+                if (*p == 'n') vga_putchar('\n');
+                else if (*p == 't') vga_putchar('\t');
+                else if (*p == '\\') vga_putchar('\\');
+                else if (*p == '"') vga_putchar('"');
+                else { vga_putchar('\\'); vga_putchar(*p); }
+                p++;
+            } else {
+                vga_putchar(*p++);
+            }
+        }
         vga_putchar('\n');
         return;
     }
 
-    // Extrai o texto antes do '>'
+    // Extrai o texto antes do '>' (processando aspas e escapes)
     char text[256];
     int text_len = 0;
     p = args;
     while (p < redir && text_len < 255) {
-        text[text_len++] = *p++;
+        if (*p == '"') {
+            p++; // pula aspas
+        } else if (*p == '\\' && *(p + 1) && p + 1 < redir) {
+            p++; // pula backslash
+            if (*p == 'n') text[text_len++] = '\n';
+            else if (*p == 't') text[text_len++] = '\t';
+            else if (*p == '\\') text[text_len++] = '\\';
+            else if (*p == '"') text[text_len++] = '"';
+            else { text[text_len++] = *p; }
+            p++;
+        } else {
+            text[text_len++] = *p++;
+        }
     }
     // Remove espaços no final
     while (text_len > 0 && text[text_len - 1] == ' ') text_len--;
     text[text_len] = '\0';
 
-    // Extrai o path após '>'
+    // Extrai o path após '>' ou '>>'
     const char *path = redir + 1;
+    if (append_mode) path++;  // pula o segundo '>'
     while (*path == ' ') path++;
 
     if (*path == '\0') {
@@ -127,12 +162,17 @@ void cmd_echo(const char *args) {
         return;
     }
 
-    // Reseta tamanho para overwrite
-    file->size = 0;
+    // Reseta tamanho para overwrite, ou mantém para append
+    uint32_t write_offset = 0;
+    if (append_mode) {
+        write_offset = file->size;
+    } else {
+        file->size = 0;
+    }
 
     // Escreve o conteúdo
     if (text_len > 0) {
-        uint32_t written = vfs_write(file, 0, (uint32_t)text_len, (const uint8_t *)text);
+        uint32_t written = vfs_write(file, write_offset, (uint32_t)text_len, (const uint8_t *)text);
         if (written == 0) {
             vga_puts_color("echo: erro ao escrever\n", THEME_ERROR);
             return;
@@ -140,7 +180,8 @@ void cmd_echo(const char *args) {
     }
 
     // Feedback
-    vga_puts_color("Escrito ", THEME_DIM);
+    const char *mode_str = append_mode ? "Adicionado " : "Escrito ";
+    vga_puts_color(mode_str, THEME_DIM);
     vga_putint(text_len);
     vga_puts_color(" bytes em ", THEME_DIM);
     vga_puts_color(clean_path, THEME_INFO);

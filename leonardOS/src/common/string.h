@@ -28,6 +28,12 @@ void kstrcpy(char *dst, const char *src, int max);
 // Concatena src ao final de dst (respeitando max total)
 void kstrcat(char *dst, const char *src, int max);
 
+// Busca substring needle em haystack. Retorna ponteiro para início ou NULL.
+const char *kstrstr(const char *haystack, const char *needle);
+
+// Converte caractere para lowercase
+char ktolower(char c);
+
 // ============================================================
 // Funções de memória
 // ============================================================
