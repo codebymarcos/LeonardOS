@@ -17,15 +17,39 @@ static volatile unsigned char kbd_buffer[KBD_BUFFER_SIZE];
 static volatile int kbd_head = 0;
 static volatile int kbd_tail = 0;
 
-// Flag para prefixo 0xE0 (teclas estendidas)
-static volatile int kbd_extended = 0;
+// Flags de estado de teclas modificadoras
+static volatile int kbd_extended = 0;   // Prefixo 0xE0 (teclas estendidas)
+static volatile int kbd_shift = 0;      // Shift pressionado
+static volatile int kbd_ctrl = 0;       // Ctrl pressionado
+static volatile int kbd_caps = 0;       // Caps Lock ativo
 
-// Mapa de scancodes para ASCII (US layout simplificado)
+// Scancodes dos modificadores
+#define SC_LSHIFT_PRESS   0x2A
+#define SC_RSHIFT_PRESS   0x36
+#define SC_LSHIFT_RELEASE 0xAA
+#define SC_RSHIFT_RELEASE 0xB6
+#define SC_CTRL_PRESS     0x1D
+#define SC_CTRL_RELEASE   0x9D
+#define SC_CAPSLOCK       0x3A
+
+// Mapa de scancodes para ASCII (US layout — sem Shift)
 static const char scancode_map[128] = {
     0,    27,  '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b', '\t',
     'q',  'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n', 0,  'a', 's',
     'd',  'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`', 0,  '\\', 'z', 'x', 'c', 'v',
     'b',  'n', 'm', ',', '.', '/',  0,  '*', 0,  ' ', 0,   0,   0,   0,   0,   0,
+    0,    0,   0,   0,   0,   0,   0,   '7', '8', '9', '-', '4', '5', '6', '+', '1',
+    '2',  '3', '0', '.', 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+};
+
+// Mapa de scancodes para ASCII (US layout — com Shift)
+static const char scancode_shift_map[128] = {
+    0,    27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '\b', '\t',
+    'Q',  'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', '\n', 0,  'A', 'S',
+    'D',  'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~', 0,  '|', 'Z', 'X', 'C', 'V',
+    'B',  'N', 'M', '<', '>', '?',  0,  '*', 0,  ' ', 0,   0,   0,   0,   0,   0,
     0,    0,   0,   0,   0,   0,   0,   '7', '8', '9', '-', '4', '5', '6', '+', '1',
     '2',  '3', '0', '.', 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
     0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
@@ -55,7 +79,34 @@ static void kbd_irq_handler(struct isr_frame *frame) {
         return;
     }
 
-    // Ignora key release (bit 7 = 1)
+    // --- Teclas modificadoras (press e release) ---
+    // Shift press
+    if (scancode == SC_LSHIFT_PRESS || scancode == SC_RSHIFT_PRESS) {
+        kbd_shift = 1;
+        return;
+    }
+    // Shift release
+    if (scancode == SC_LSHIFT_RELEASE || scancode == SC_RSHIFT_RELEASE) {
+        kbd_shift = 0;
+        return;
+    }
+    // Ctrl press
+    if (scancode == SC_CTRL_PRESS) {
+        kbd_ctrl = 1;
+        return;
+    }
+    // Ctrl release (0x1D + 0x80 = 0x9D)
+    if (scancode == SC_CTRL_RELEASE) {
+        kbd_ctrl = 0;
+        return;
+    }
+    // Caps Lock (toggle no press)
+    if (scancode == SC_CAPSLOCK) {
+        kbd_caps = !kbd_caps;
+        return;
+    }
+
+    // Ignora key release (bit 7 = 1) para teclas normais
     if (scancode & 0x80) {
         kbd_extended = 0;
         return;
@@ -65,18 +116,27 @@ static void kbd_irq_handler(struct isr_frame *frame) {
         kbd_extended = 0;
         // Scancodes estendidos (após 0xE0)
         switch (scancode) {
-            case 0x49: kbd_enqueue(KEY_PAGE_UP);   return;  // Page Up
-            case 0x51: kbd_enqueue(KEY_PAGE_DOWN); return;  // Page Down
-            case 0x48: kbd_enqueue(KEY_ARROW_UP);  return;  // Arrow Up
-            case 0x50: kbd_enqueue(KEY_ARROW_DOWN); return; // Arrow Down
-            case 0x47: kbd_enqueue(KEY_HOME);      return;  // Home
-            case 0x4F: kbd_enqueue(KEY_END);       return;  // End
-            default: return;  // Outra tecla estendida, ignora
+            case 0x49: kbd_enqueue(KEY_PAGE_UP);   return;
+            case 0x51: kbd_enqueue(KEY_PAGE_DOWN); return;
+            case 0x48: kbd_enqueue(KEY_ARROW_UP);  return;
+            case 0x50: kbd_enqueue(KEY_ARROW_DOWN); return;
+            case 0x47: kbd_enqueue(KEY_HOME);      return;
+            case 0x4F: kbd_enqueue(KEY_END);       return;
+            default: return;
         }
     }
 
     if (scancode < 128) {
-        char c = scancode_map[scancode];
+        // Decide qual mapa usar
+        int use_shift = kbd_shift;
+
+        // Caps Lock afeta apenas letras (a-z)
+        char base = scancode_map[scancode];
+        if (kbd_caps && base >= 'a' && base <= 'z') {
+            use_shift = !use_shift;  // Caps inverte o shift para letras
+        }
+
+        char c = use_shift ? scancode_shift_map[scancode] : scancode_map[scancode];
         kbd_enqueue((unsigned char)c);
     }
 }

@@ -16,6 +16,7 @@
 #include "../common/string.h"
 #include "../fs/vfs.h"
 #include "../fs/ramfs.h"
+#include "../fs/leonfs.h"
 #include "../shell/shell.h"
 
 // Remove recursivo: remove todos os filhos e depois o próprio nó
@@ -24,18 +25,29 @@ static bool rm_recursive(vfs_node_t *parent, vfs_node_t *node) {
 
     // Se é diretório, remove filhos primeiro
     if (node->type & VFS_DIRECTORY) {
-        ramfs_data_t *rd = (ramfs_data_t *)node->fs_data;
-        if (rd) {
-            // Remove filhos de trás pra frente (child_count diminui a cada remoção)
-            while (rd->child_count > 0) {
-                vfs_node_t *child = rd->children[0];
+        if (leonfs_is_node(node)) {
+            // LeonFS: itera por readdir
+            vfs_node_t *child;
+            while ((child = vfs_readdir(node, 0)) != NULL) {
                 if (!rm_recursive(node, child)) return false;
+            }
+        } else {
+            ramfs_data_t *rd = (ramfs_data_t *)node->fs_data;
+            if (rd) {
+                while (rd->child_count > 0) {
+                    vfs_node_t *child = rd->children[0];
+                    if (!rm_recursive(node, child)) return false;
+                }
             }
         }
     }
 
-    // Agora o nó está vazio (ou é arquivo), remove do pai
-    return ramfs_remove(parent, node->name);
+    // Remove do pai
+    if (leonfs_is_node(parent)) {
+        return leonfs_remove(parent, node->name);
+    } else {
+        return ramfs_remove(parent, node->name);
+    }
 }
 
 void cmd_rm(const char *args) {
@@ -120,12 +132,22 @@ void cmd_rm(const char *args) {
 
     // Diretório com filhos precisa de -r
     if (target->type & VFS_DIRECTORY) {
-        ramfs_data_t *rd = (ramfs_data_t *)target->fs_data;
-        if (rd && rd->child_count > 0 && !recursive) {
-            vga_puts_color("rm: diretorio nao vazio (use -r): ", THEME_ERROR);
-            vga_puts_color(args, THEME_WARNING);
-            vga_putchar('\n');
-            return;
+        if (!leonfs_is_node(target)) {
+            ramfs_data_t *rd = (ramfs_data_t *)target->fs_data;
+            if (rd && rd->child_count > 0 && !recursive) {
+                vga_puts_color("rm: diretorio nao vazio (use -r): ", THEME_ERROR);
+                vga_puts_color(args, THEME_WARNING);
+                vga_putchar('\n');
+                return;
+            }
+        } else {
+            // LeonFS: verifica se tem filhos via readdir
+            if (!recursive && vfs_readdir(target, 0) != NULL) {
+                vga_puts_color("rm: diretorio nao vazio (use -r): ", THEME_ERROR);
+                vga_puts_color(args, THEME_WARNING);
+                vga_putchar('\n');
+                return;
+            }
         }
     }
 
@@ -133,6 +155,8 @@ void cmd_rm(const char *args) {
     bool ok;
     if (recursive && (target->type & VFS_DIRECTORY)) {
         ok = rm_recursive(parent, target);
+    } else if (leonfs_is_node(parent)) {
+        ok = leonfs_remove(parent, target_name);
     } else {
         ok = ramfs_remove(parent, target_name);
     }

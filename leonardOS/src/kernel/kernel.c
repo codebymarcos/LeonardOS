@@ -12,6 +12,8 @@
 #include "memory/heap.h"
 #include "fs/vfs.h"
 #include "fs/ramfs.h"
+#include "drivers/disk/ide.h"
+#include "fs/leonfs.h"
 #include "shell/shell.h"
 
 void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multiboot_info) {
@@ -94,6 +96,44 @@ void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multib
     vfs_mount_root(ramfs_root);
     vga_puts_color("[OK] ", THEME_BOOT_OK);
     vga_puts_color("VFS + RamFS montado em /\n", THEME_BOOT);
+
+    // Inicializa IDE (disco ATA)
+    ide_init();
+    {
+        const ide_disk_info_t *disk = ide_get_info();
+        if (disk->present) {
+            vga_puts_color("[OK] ", THEME_BOOT_OK);
+            vga_puts_color("IDE: ", THEME_BOOT);
+            vga_puts_color(disk->model, THEME_VALUE);
+            vga_puts_color(" (", THEME_BOOT);
+            vga_putint(disk->total_sectors / 2048);
+            vga_puts_color("MB)\n", THEME_BOOT);
+        } else {
+            vga_puts_color("[--] ", THEME_DIM);
+            vga_puts_color("IDE: nenhum disco detectado\n", THEME_DIM);
+        }
+    }
+
+    // Inicializa LeonFS em /mnt
+    {
+        const ide_disk_info_t *disk = ide_get_info();
+        if (disk->present) {
+            vfs_node_t *mnt = leonfs_init();
+            if (mnt) {
+                // Monta LeonFS como /mnt no RamFS
+                // Cria /mnt como "filho" da raiz RamFS que redireciona para LeonFS
+                ramfs_data_t *root_data = (ramfs_data_t *)vfs_root->fs_data;
+                if (root_data && root_data->child_count < RAMFS_MAX_CHILDREN) {
+                    root_data->children[root_data->child_count++] = mnt;
+                }
+                vga_puts_color("[OK] ", THEME_BOOT_OK);
+                vga_puts_color("LeonFS montado em /mnt\n", THEME_BOOT);
+            } else {
+                vga_puts_color("[!!] ", THEME_BOOT_FAIL);
+                vga_puts_color("LeonFS: falha ao inicializar\n", THEME_ERROR);
+            }
+        }
+    }
 
     // Habilita interrupções
     asm volatile("sti");

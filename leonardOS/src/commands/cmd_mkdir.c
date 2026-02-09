@@ -12,6 +12,7 @@
 #include "../common/string.h"
 #include "../fs/vfs.h"
 #include "../fs/ramfs.h"
+#include "../fs/leonfs.h"
 #include "../shell/shell.h"
 
 void cmd_mkdir(const char *args) {
@@ -83,8 +84,13 @@ void cmd_mkdir(const char *args) {
         return;
     }
 
-    // Cria
-    vfs_node_t *created = ramfs_create_dir(parent, dir_name);
+    // Cria no FS correto
+    vfs_node_t *created;
+    if (leonfs_is_node(parent)) {
+        created = leonfs_create_dir(parent, dir_name);
+    } else {
+        created = ramfs_create_dir(parent, dir_name);
+    }
     if (!created) {
         vga_puts_color("mkdir: falha ao criar diretorio\n", THEME_ERROR);
         return;

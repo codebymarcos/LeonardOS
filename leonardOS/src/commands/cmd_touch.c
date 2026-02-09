@@ -12,6 +12,7 @@
 #include "../common/string.h"
 #include "../fs/vfs.h"
 #include "../fs/ramfs.h"
+#include "../fs/leonfs.h"
 #include "../shell/shell.h"
 
 void cmd_touch(const char *args) {
@@ -78,8 +79,13 @@ void cmd_touch(const char *args) {
         return;
     }
 
-    // Cria arquivo
-    vfs_node_t *created = ramfs_create_file(parent, file_name);
+    // Cria arquivo no FS correto
+    vfs_node_t *created;
+    if (leonfs_is_node(parent)) {
+        created = leonfs_create_file(parent, file_name);
+    } else {
+        created = ramfs_create_file(parent, file_name);
+    }
     if (!created) {
         vga_puts_color("touch: falha ao criar arquivo\n", THEME_ERROR);
         return;

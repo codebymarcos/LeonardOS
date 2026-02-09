@@ -17,6 +17,7 @@
 #include "cmd_touch.h"
 #include "cmd_rm.h"
 #include "cmd_cp.h"
+#include "cmd_reboot.h"
 
 // ============================================================
 // Tabela de comandos
@@ -39,6 +40,7 @@ static const command_t command_table[] = {
     { "touch",   "cria um arquivo vazio",              cmd_touch   },
     { "rm",      "remove arquivo ou diretorio",        cmd_rm      },
     { "cp",      "copia um arquivo",                    cmd_cp      },
+    { "reboot",  "reinicia o sistema",                  cmd_reboot  },
 };
 
 static const int command_count = sizeof(command_table) / sizeof(command_table[0]);
