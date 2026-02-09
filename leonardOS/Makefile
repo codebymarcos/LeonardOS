@@ -49,6 +49,8 @@ CMD_WC_C = src/commands/cmd_wc.c
 CMD_HEAD_C = src/commands/cmd_head.c
 CMD_SOURCE_C = src/commands/cmd_source.c
 CMD_KEYTEST_C = src/commands/cmd_keytest.c
+CMD_IFCONFIG_C = src/commands/cmd_ifconfig.c
+CMD_NETSTAT_C = src/commands/cmd_netstat.c
 SCRIPT_C = src/shell/script.c
 STRING_C = src/common/string.c
 IDE_C = src/drivers/disk/ide.c
@@ -56,6 +58,11 @@ LEONFS_C = src/fs/leonfs.c
 PCI_C = src/drivers/pci/pci.c
 RTL8139_C = src/drivers/net/rtl8139.c
 NET_CONFIG_C = src/net/net_config.c
+ETHERNET_C = src/net/ethernet.c
+ARP_C = src/net/arp.c
+IPV4_C = src/net/ipv4.c
+ICMP_C = src/net/icmp.c
+CMD_PING_C = src/commands/cmd_ping.c
 
 OBJ_BOOT = build/boot.o
 OBJ_KERNEL = build/kernel.o
@@ -100,6 +107,8 @@ OBJ_CMD_WC = build/cmd_wc.o
 OBJ_CMD_HEAD = build/cmd_head.o
 OBJ_CMD_SOURCE = build/cmd_source.o
 OBJ_CMD_KEYTEST = build/cmd_keytest.o
+OBJ_CMD_IFCONFIG = build/cmd_ifconfig.o
+OBJ_CMD_NETSTAT = build/cmd_netstat.o
 OBJ_SCRIPT = build/script.o
 OBJ_STRING = build/string.o
 OBJ_IDE = build/ide.o
@@ -107,6 +116,11 @@ OBJ_LEONFS = build/leonfs.o
 OBJ_PCI = build/pci.o
 OBJ_RTL8139 = build/rtl8139.o
 OBJ_NET_CONFIG = build/net_config.o
+OBJ_ETHERNET = build/ethernet.o
+OBJ_ARP = build/arp.o
+OBJ_IPV4 = build/ipv4.o
+OBJ_ICMP = build/icmp.o
+OBJ_CMD_PING = build/cmd_ping.o
 OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
           $(OBJ_GDT) $(OBJ_GDT_FLUSH) $(OBJ_IDT) $(OBJ_ISR) $(OBJ_ISR_STUB) $(OBJ_PIC) \
           $(OBJ_CMD_COMMANDS) $(OBJ_CMD_HELP) $(OBJ_CMD_CLEAR) $(OBJ_CMD_SYSINFO) $(OBJ_CMD_HALT) \
@@ -115,9 +129,12 @@ OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
           $(OBJ_CMD_RM) $(OBJ_CMD_CP) $(OBJ_CMD_REBOOT) \
           $(OBJ_CMD_STAT) $(OBJ_CMD_TREE) $(OBJ_CMD_FIND) $(OBJ_CMD_GREP) \
           $(OBJ_CMD_ENV) $(OBJ_CMD_WC) $(OBJ_CMD_HEAD) $(OBJ_CMD_SOURCE) $(OBJ_CMD_KEYTEST) \
+          $(OBJ_CMD_IFCONFIG) $(OBJ_CMD_NETSTAT) \
           $(OBJ_PMM) $(OBJ_VMM) $(OBJ_HEAP) $(OBJ_VFS) $(OBJ_RAMFS) $(OBJ_STRING) \
           $(OBJ_IDE) $(OBJ_LEONFS) $(OBJ_SCRIPT) \
-          $(OBJ_PCI) $(OBJ_RTL8139) $(OBJ_NET_CONFIG)
+          $(OBJ_PCI) $(OBJ_RTL8139) $(OBJ_NET_CONFIG) \
+          $(OBJ_ETHERNET) $(OBJ_ARP) $(OBJ_IPV4) $(OBJ_ICMP) \
+          $(OBJ_CMD_PING)
 
 TARGET = build/kernel.elf
 ISO = build/leonardos.iso
@@ -299,6 +316,14 @@ build/cmd_keytest.o: $(CMD_KEYTEST_C)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@
 
+build/cmd_ifconfig.o: $(CMD_IFCONFIG_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/cmd_netstat.o: $(CMD_NETSTAT_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
 build/script.o: $(SCRIPT_C)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@
@@ -324,6 +349,26 @@ build/rtl8139.o: $(RTL8139_C)
 	$(CC) $(CFLAGS) $< -o $@
 
 build/net_config.o: $(NET_CONFIG_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/ethernet.o: $(ETHERNET_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/arp.o: $(ARP_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/ipv4.o: $(IPV4_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/icmp.o: $(ICMP_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/cmd_ping.o: $(CMD_PING_C)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@
 

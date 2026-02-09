@@ -416,11 +416,24 @@ void shell_loop(void) {
     vga_puts_color("LeonardOS v0.1", THEME_TITLE);
     vga_puts(" - Digite '");
     vga_puts_color("help", THEME_INFO);
-    vga_puts("' para ajuda\n");
+    vga_puts("' para ajuda\n\n");
 
     while (1) {
-        vga_puts_color(current_path, THEME_INFO);
-        vga_puts_color("> ", THEME_PROMPT);
+        // Linha 1: ┌─ LeonardOS ── leonardo@kernel
+        vga_puts_color("\u250C\u2500", THEME_DIM);           // ┌─
+        vga_puts_color(" LeonardOS ", THEME_TITLE);           // LeonardOS
+        vga_puts_color("\u2500\u2500 ", THEME_DIM);           // ──
+        vga_puts_color("leonardo", THEME_PROMPT);             // leonardo
+        vga_puts_color("@", THEME_DIM);                       // @
+        vga_puts_color("kernel", THEME_PROMPT);               // kernel
+        vga_putchar('\n');
+
+        // Linha 2: └─[/path] >
+        vga_puts_color("\u2514\u2500", THEME_DIM);            // └─
+        vga_puts_color("[", THEME_DIM);                       // [
+        vga_puts_color(current_path, THEME_INFO);             // /path
+        vga_puts_color("] ", THEME_DIM);                      // ]
+        vga_puts_color("> ", THEME_PROMPT);                   // >
         vga_set_color(THEME_DEFAULT);
         kbd_read_line(cmd_buf, sizeof(cmd_buf));
         vga_putchar('\n');

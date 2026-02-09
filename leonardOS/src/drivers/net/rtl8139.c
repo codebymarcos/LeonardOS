@@ -67,7 +67,7 @@
 #define RX_BUF_SIZE     (8192 + 16 + 1500)
 
 // TX buffer size por descriptor
-#define TX_BUF_SIZE     ETH_FRAME_MAX
+#define TX_BUF_SIZE     RTL8139_BUF_SIZE
 
 // Número de TX descriptors
 #define TX_DESC_COUNT   4
@@ -132,7 +132,7 @@ static void rtl8139_irq_handler(struct isr_frame *frame) {
 
             uint16_t pkt_len = hdr->length - 4;  // Remove CRC (4 bytes)
 
-            if (pkt_len > 0 && pkt_len <= ETH_FRAME_MAX) {
+            if (pkt_len > 0 && pkt_len <= RTL8139_BUF_SIZE) {
                 stats.rx_packets++;
                 stats.rx_bytes += pkt_len;
 
@@ -288,7 +288,7 @@ bool rtl8139_init(void) {
 // rtl8139_send — envia um frame Ethernet
 // ============================================================
 bool rtl8139_send(const void *data, uint16_t len) {
-    if (!nic_present || !data || len == 0 || len > ETH_FRAME_MAX) {
+    if (!nic_present || !data || len == 0 || len > RTL8139_BUF_SIZE) {
         return false;
     }
 

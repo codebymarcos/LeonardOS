@@ -25,10 +25,15 @@
 [v] Atalhos de teclado (Ctrl+Up/Down scroll, Ctrl+A para ;)
 [v] Sistema de captura VGA para pipes
 [v] Testes automatizados atualizados (26 comandos, todos subsistemas)
-[ ] Driver de rede (RTL8139, IRQ + DMA)
-[ ] Camada Ethernet (frames, MAC addresses)
-[ ] Stack IP (ARP, IP, ICMP)
-[ ] UDP/TCP básico
+[v] Driver de rede (PCI bus scan, RTL8139, IRQ + DMA)
+[v] Configuracao de rede (IP/netmask/gateway estatico, QEMU user-mode)
+[v] Comandos de rede (ifconfig, netstat)
+[v] Camada Ethernet (frames, EtherType dispatch, byte order)
+[v] ARP (request/reply, tabela cache, resolução IP→MAC)
+[v] Stack IP (IPv4 send/receive, checksum, routing)
+[v] ICMP (Echo Request/Reply, ping state tracking)
+[v] Comando ping (ICMP echo, timeout, estatisticas)
+[ ] UDP basico
+[ ] TCP basico
 [ ] API de sockets
-[ ] Comandos de rede (ping, ifconfig, netstat)
 

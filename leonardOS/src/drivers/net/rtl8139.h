@@ -6,9 +6,9 @@
 
 #include "../../common/types.h"
 
-// Tamanho máximo de um frame Ethernet (sem CRC, hardware calcula)
-#define ETH_FRAME_MAX  1536
-#define ETH_ALEN       6       // Tamanho de endereço MAC
+// Tamanho máximo de um frame Ethernet (buffer do driver, inclui margem)
+#define RTL8139_BUF_SIZE  1536
+#define ETH_ALEN          6       // Tamanho de endereço MAC
 
 // Estatísticas da NIC
 typedef struct {

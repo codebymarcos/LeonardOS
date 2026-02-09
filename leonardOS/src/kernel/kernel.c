@@ -15,6 +15,10 @@
 #include "drivers/disk/ide.h"
 #include "fs/leonfs.h"
 #include "net/net_config.h"
+#include "net/ethernet.h"
+#include "net/arp.h"
+#include "net/ipv4.h"
+#include "net/icmp.h"
 #include "shell/shell.h"
 
 void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multiboot_info) {
@@ -136,8 +140,12 @@ void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multib
         }
     }
 
-    // Inicializa rede (PCI scan + RTL8139)
+    // Inicializa rede (PCI + RTL8139 + Ethernet + ARP + IPv4 + ICMP)
     net_init();
+    eth_init();
+    arp_init();
+    ipv4_init();
+    icmp_init();
 
     // Habilita interrupções
     asm volatile("sti");

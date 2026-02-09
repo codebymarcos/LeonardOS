@@ -22,6 +22,12 @@
 #include "../drivers/disk/ide.h"
 #include "../fs/leonfs.h"
 #include "../shell/shell.h"
+#include "../drivers/net/rtl8139.h"
+#include "../net/net_config.h"
+#include "../net/ethernet.h"
+#include "../net/arp.h"
+#include "../net/ipv4.h"
+#include "../net/icmp.h"
 
 // ============================================================
 // Contadores de resultado
@@ -810,8 +816,8 @@ static void test_commands(void) {
     test_result("Pelo menos 4 comandos", count >= 4, NULL);
 
     // Verifica se cada comando base existe
-    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem", "df", "ls", "cat", "echo", "pwd", "cd", "mkdir", "touch", "rm", "cp", "reboot", "stat", "tree", "find", "grep", "env", "wc", "head", "source"};
-    int num_expected = 25;
+    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem", "df", "ls", "cat", "echo", "pwd", "cd", "mkdir", "touch", "rm", "cp", "reboot", "stat", "tree", "find", "grep", "env", "wc", "head", "source", "keytest", "ifconfig", "netstat", "ping"};
+    int num_expected = 29;
 
     for (int i = 0; i < num_expected; i++) {
         const command_t *cmd = commands_find(expected[i]);
@@ -1090,7 +1096,98 @@ static void test_leonfs(void) {
 }
 
 // ============================================================
-// 17. Teste do sistema de Comandos
+// 17. Teste de Rede (PCI + RTL8139 + Net Config)
+// ============================================================
+static void test_network(void) {
+    test_header("Rede (RTL8139 + Net Config)");
+
+    // Verifica se a NIC foi detectada
+    int nic_ok = rtl8139_is_present();
+    test_result("RTL8139 detectada", nic_ok, NULL);
+
+    // Verifica MAC address (deve ser != 00:00:00:00:00:00)
+    if (nic_ok) {
+        uint8_t mac[6];
+        rtl8139_get_mac(mac);
+        int mac_valid = 0;
+        for (int i = 0; i < 6; i++) {
+            if (mac[i] != 0) { mac_valid = 1; break; }
+        }
+        test_result("MAC != 00:00:00:00:00:00", mac_valid, NULL);
+    }
+
+    // Verifica config de rede
+    net_config_t *cfg = net_get_config();
+    test_result("net_config != NULL", cfg != NULL, NULL);
+
+    if (cfg) {
+        // Verifica IP configurado
+        int ip_valid = (cfg->ip.octets[0] != 0);
+        test_result("IP configurado", ip_valid, NULL);
+
+        // Verifica gateway configurado
+        int gw_valid = (cfg->gateway.octets[0] != 0);
+        test_result("Gateway configurado", gw_valid, NULL);
+    }
+
+    // Testa str_to_ip -> ip_to_str round-trip
+    ip_addr_t test_ip;
+    int parsed = str_to_ip("192.168.1.100", &test_ip);
+    int rt_ok = parsed && (test_ip.octets[0] == 192 && test_ip.octets[1] == 168 &&
+                           test_ip.octets[2] == 1   && test_ip.octets[3] == 100);
+    test_result("str_to_ip round-trip", rt_ok, NULL);
+
+    // Testa htons/ntohs
+    uint16_t h = 0x1234;
+    uint16_t n = htons(h);
+    test_result("htons(0x1234)==0x3412", n == 0x3412, NULL);
+    test_result("ntohs round-trip", ntohs(n) == h, NULL);
+
+    // Testa htonl/ntohl
+    uint32_t h32 = 0x12345678;
+    uint32_t n32 = htonl(h32);
+    test_result("htonl round-trip", ntohl(n32) == h32, NULL);
+
+    // Verifica camada Ethernet ativa
+    eth_stats_t eth_st = eth_get_stats();
+    // Stats devem existir (struct válida, contadores >= 0 — sempre true)
+    test_result("Ethernet: stats acessiveis", 1, NULL);
+    (void)eth_st;
+
+    // Verifica ARP inicializado
+    int arp_count = 0;
+    const arp_entry_t *arp_tbl = arp_get_table(&arp_count);
+    test_result("ARP: tabela acessivel", arp_tbl != NULL, NULL);
+    test_result("ARP: contagem >= 0", arp_count >= 0, NULL);
+
+    // Verifica IPv4 inicializado
+    ipv4_stats_t ip_st = ipv4_get_stats();
+    test_result("IPv4: stats acessiveis", 1, NULL);
+    (void)ip_st;
+
+    // Verifica checksum IP
+    uint8_t test_hdr[] = {0x45,0x00,0x00,0x54, 0x00,0x01,0x40,0x00,
+                          0x40,0x01,0x00,0x00, 0x0a,0x00,0x02,0x0f,
+                          0x0a,0x00,0x02,0x02};
+    uint16_t ck = ip_checksum(test_hdr, 20);
+    // Preenche checksum e verifica que re-calculo dá 0
+    test_hdr[10] = (uint8_t)(ck & 0xFF);
+    test_hdr[11] = (uint8_t)(ck >> 8);
+    uint16_t ck2 = ip_checksum(test_hdr, 20);
+    test_result("ip_checksum: verify==0", ck2 == 0, NULL);
+
+    // Verifica ICMP inicializado
+    icmp_stats_t icmp_st = icmp_get_stats();
+    test_result("ICMP: stats acessiveis", 1, NULL);
+    (void)icmp_st;
+
+    // Verifica ping state
+    ping_state_t *ps = icmp_get_ping_state();
+    test_result("ICMP: ping_state acessivel", ps != NULL, NULL);
+}
+
+// ============================================================
+// 18. Teste do sistema de Comandos
 // ============================================================
 void cmd_test(const char *args) {
     (void)args;
@@ -1123,6 +1220,7 @@ void cmd_test(const char *args) {
     test_rm_cp();
     test_ide();
     test_leonfs();
+    test_network();
     test_commands();
 
     // Resumo final

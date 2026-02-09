@@ -28,6 +28,9 @@
 #include "cmd_head.h"
 #include "cmd_source.h"
 #include "cmd_keytest.h"
+#include "cmd_ifconfig.h"
+#include "cmd_netstat.h"
+#include "cmd_ping.h"
 
 // ============================================================
 // Tabela de comandos
@@ -35,32 +38,35 @@
 // e adicionar uma entrada aqui.
 // ============================================================
 static const command_t command_table[] = {
-    { "help",    "exibe a lista de comandos",       cmd_help    },
-    { "clear",   "limpa a tela",                    cmd_clear   },
-    { "sysinfo", "exibe informacoes do sistema",    cmd_sysinfo },
-    { "halt",    "desliga o kernel",                cmd_halt    },
-    { "test",    "teste automatizado do kernel",    cmd_test    },
-    { "mem",     "exibe uso de memoria fisica",     cmd_mem     },
-    { "df",      "exibe uso de espaço em disco",     cmd_df      },
-    { "ls",      "lista conteudo de diretorio",     cmd_ls      },
-    { "cat",     "exibe conteudo de arquivo",       cmd_cat     },
-    { "echo",    "escreve texto / grava em arquivo", cmd_echo    },
-    { "pwd",     "exibe diretorio atual",            cmd_pwd     },
-    { "cd",      "muda de diretorio",                 cmd_cd      },
-    { "mkdir",   "cria um diretorio",                  cmd_mkdir   },
-    { "touch",   "cria um arquivo vazio",              cmd_touch   },
-    { "rm",      "remove arquivo ou diretorio",        cmd_rm      },
-    { "cp",      "copia um arquivo",                    cmd_cp      },
-    { "reboot",  "reinicia o sistema",                  cmd_reboot  },
-    { "stat",    "exibe informacoes de arquivo",          cmd_stat    },
-    { "tree",    "arvore de diretorios",                   cmd_tree    },
-    { "find",    "busca arquivos por nome",                cmd_find    },
-    { "grep",    "busca texto em arquivos",                 cmd_grep    },
-    { "env",     "lista/define variaveis de ambiente",       cmd_env     },
-    { "wc",      "conta linhas, palavras e bytes",           cmd_wc      },
-    { "head",    "exibe primeiras N linhas",                 cmd_head    },
-    { "source",  "executa um script .sh",                   cmd_source  },
-    { "keytest", "diagnostico de scancodes",                cmd_keytest },
+    { "help",     "lista de comandos",              cmd_help     },
+    { "clear",    "limpa a tela",                   cmd_clear    },
+    { "sysinfo",  "informacoes do sistema",         cmd_sysinfo  },
+    { "halt",     "desliga o kernel",               cmd_halt     },
+    { "reboot",   "reinicia o sistema",             cmd_reboot   },
+    { "test",     "teste automatizado",             cmd_test     },
+    { "mem",      "uso de memoria fisica",          cmd_mem      },
+    { "df",       "uso de disco",                   cmd_df       },
+    { "ls",       "lista diretorio",                cmd_ls       },
+    { "cat",      "exibe arquivo",                  cmd_cat      },
+    { "echo",     "escreve texto",                  cmd_echo     },
+    { "pwd",      "diretorio atual",                cmd_pwd      },
+    { "cd",       "muda diretorio",                 cmd_cd       },
+    { "mkdir",    "cria diretorio",                 cmd_mkdir    },
+    { "touch",    "cria arquivo vazio",             cmd_touch    },
+    { "rm",       "remove arquivo/diretorio",       cmd_rm       },
+    { "cp",       "copia arquivo",                  cmd_cp       },
+    { "stat",     "info de arquivo",                cmd_stat     },
+    { "tree",     "arvore de diretorios",           cmd_tree     },
+    { "find",     "busca por nome",                 cmd_find     },
+    { "grep",     "busca texto em arquivo",         cmd_grep     },
+    { "wc",       "conta linhas/palavras/bytes",    cmd_wc       },
+    { "head",     "primeiras N linhas",             cmd_head     },
+    { "env",      "variaveis de ambiente",          cmd_env      },
+    { "source",   "executa script .sh",             cmd_source   },
+    { "keytest",  "diagnostico scancodes",          cmd_keytest  },
+    { "ifconfig", "configuracao de rede",           cmd_ifconfig },
+    { "netstat",  "estatisticas de rede",           cmd_netstat  },
+    { "ping",     "testa conectividade (ICMP)",     cmd_ping     },
 };
 
 static const int command_count = sizeof(command_table) / sizeof(command_table[0]);
