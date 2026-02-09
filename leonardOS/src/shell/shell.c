@@ -7,9 +7,18 @@
 #include "../common/colors.h"
 #include "../commands/commands.h"
 
+// ============================================================
+// Estado global do shell
+// ============================================================
+vfs_node_t *current_dir = NULL;
+char current_path[256] = "/";
+
 // Loop principal do shell
 void shell_loop(void) {
     static char cmd_buf[256];
+    
+    // Inicializa diretório atual como raiz
+    current_dir = vfs_root;
     
     vga_set_color(THEME_DEFAULT);
     vga_puts_color("LeonardOS v0.1", THEME_TITLE);
@@ -18,6 +27,7 @@ void shell_loop(void) {
     vga_puts("' para ajuda\n");
     
     while (1) {
+        vga_puts_color(current_path, THEME_INFO);
         vga_puts_color("> ", THEME_PROMPT);
         vga_set_color(THEME_DEFAULT);
         kbd_read_line(cmd_buf, sizeof(cmd_buf));
@@ -35,3 +45,4 @@ void shell_loop(void) {
         }
     }
 }
+

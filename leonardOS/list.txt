@@ -9,3 +9,4 @@
 [v] Paging / VMM (identity map 16MB, page fault handler)
 [v] Heap do Kernel (kmalloc/kfree, first-fit, coalescing)
 [v] VFS + RamFS (camada virtual, arquivos em RAM, ls/cat/echo)
+[v] Navegação (pwd/cd, diretório atual, paths relativos/absolutos)

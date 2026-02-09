@@ -11,6 +11,10 @@
 #include "cmd_ls.h"
 #include "cmd_cat.h"
 #include "cmd_echo.h"
+#include "cmd_pwd.h"
+#include "cmd_cd.h"
+#include "cmd_mkdir.h"
+#include "cmd_touch.h"
 
 // ============================================================
 // Tabela de comandos
@@ -27,6 +31,10 @@ static const command_t command_table[] = {
     { "ls",      "lista conteudo de diretorio",     cmd_ls      },
     { "cat",     "exibe conteudo de arquivo",       cmd_cat     },
     { "echo",    "escreve texto / grava em arquivo", cmd_echo    },
+    { "pwd",     "exibe diretorio atual",            cmd_pwd     },
+    { "cd",      "muda de diretorio",                 cmd_cd      },
+    { "mkdir",   "cria um diretorio",                  cmd_mkdir   },
+    { "touch",   "cria um arquivo vazio",              cmd_touch   },
 };
 
 static const int command_count = sizeof(command_table) / sizeof(command_table[0]);

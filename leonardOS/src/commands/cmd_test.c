@@ -18,6 +18,7 @@
 #include "../memory/heap.h"
 #include "../fs/vfs.h"
 #include "../fs/ramfs.h"
+#include "../shell/shell.h"
 
 // ============================================================
 // Contadores de resultado
@@ -795,8 +796,8 @@ static void test_commands(void) {
     test_result("Pelo menos 4 comandos", count >= 4, NULL);
 
     // Verifica se cada comando base existe
-    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem", "ls", "cat", "echo"};
-    int num_expected = 9;
+    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem", "ls", "cat", "echo", "pwd", "cd", "mkdir", "touch"};
+    int num_expected = 13;
 
     for (int i = 0; i < num_expected; i++) {
         const command_t *cmd = commands_find(expected[i]);
@@ -817,7 +818,89 @@ static void test_commands(void) {
 }
 
 // ============================================================
-// Ponto de entrada do comando test
+// 13. Teste de pwd / cd (navegação) + vfs_resolve
+// ============================================================
+static void test_pwd_cd(void) {
+    test_header("pwd / cd / vfs_resolve");
+
+    // Salva estado inicial
+    vfs_node_t *original_dir = current_dir;
+    char original_path[256];
+    int i = 0;
+    while (i < 255 && current_path[i]) {
+        original_path[i] = current_path[i];
+        i++;
+    }
+    original_path[i] = '\0';
+
+    // 1. pwd no início deve ser "/"
+    test_result("pwd inicial == '/'", current_path[0] == '/' && current_path[1] == '\0', NULL);
+    test_result("current_dir == vfs_root", current_dir == vfs_root, NULL);
+
+    // 2. cd /etc
+    extern void cmd_cd(const char*);
+    cmd_cd("/etc");
+    test_result("cd /etc: path == '/etc'",
+                current_path[0] == '/' && current_path[1] == 'e' &&
+                current_path[2] == 't' && current_path[3] == 'c' &&
+                current_path[4] == '\0', NULL);
+    test_result("cd /etc: current_dir é diretório", current_dir->type == VFS_DIRECTORY, NULL);
+
+    // 3. cd .. (volta para raiz)
+    cmd_cd("..");
+    test_result("cd ..: volta para '/'", current_path[0] == '/' && current_path[1] == '\0', NULL);
+    test_result("cd ..: current_dir == vfs_root", current_dir == vfs_root, NULL);
+
+    // 4. cd sem argumento volta para raiz
+    cmd_cd("/etc");
+    cmd_cd("");
+    test_result("cd (vazio): volta para '/'", current_path[0] == '/' && current_path[1] == '\0', NULL);
+
+    // 5. cd . (noop)
+    cmd_cd("/etc");
+    cmd_cd(".");
+    test_result("cd .: mantém '/etc'",
+                current_path[0] == '/' && current_path[1] == 'e' &&
+                current_path[2] == 't' && current_path[3] == 'c' &&
+                current_path[4] == '\0', NULL);
+
+    // 6. vfs_resolve relativo
+    cmd_cd("/");
+    vfs_node_t *etc = vfs_resolve("etc", current_dir, NULL, 0);
+    test_result("vfs_resolve('etc') relativo", etc != NULL && etc->type == VFS_DIRECTORY, NULL);
+
+    // 7. vfs_resolve com ..
+    cmd_cd("/etc");
+    vfs_node_t *tmp_via_dotdot = vfs_resolve("../tmp", current_dir, NULL, 0);
+    test_result("vfs_resolve('../tmp') de /etc", tmp_via_dotdot != NULL, NULL);
+
+    // 8. vfs_build_path normaliza
+    char out[256];
+    int ok = vfs_build_path("/etc", "..", out, 256);
+    test_result("build_path('/etc','..') == '/'", ok && out[0] == '/' && out[1] == '\0', NULL);
+
+    ok = vfs_build_path("/", "etc/../tmp", out, 256);
+    test_result("build_path('/','etc/../tmp') == '/tmp'",
+                ok && out[0] == '/' && out[1] == 't' &&
+                out[2] == 'm' && out[3] == 'p' && out[4] == '\0', NULL);
+
+    // 9. cd inválido não muda estado
+    cmd_cd("/");
+    cmd_cd("/nao/existe");
+    test_result("cd inválido não muda path", current_path[0] == '/' && current_path[1] == '\0', NULL);
+
+    // Restaura estado
+    current_dir = original_dir;
+    i = 0;
+    while (i < 255 && original_path[i]) {
+        current_path[i] = original_path[i];
+        i++;
+    }
+    current_path[i] = '\0';
+}
+
+// ============================================================
+// 14. Teste do sistema de Comandos
 // ============================================================
 void cmd_test(const char *args) {
     (void)args;
@@ -846,6 +929,7 @@ void cmd_test(const char *args) {
     test_paging();
     test_heap();
     test_vfs();
+    test_pwd_cd();
     test_commands();
 
     // Resumo final

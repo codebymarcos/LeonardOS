@@ -2,21 +2,18 @@
 // Escreve texto em arquivo ou exibe no terminal via VFS
 //
 // Uso:
-//   echo hello              → exibe "hello" no terminal
-//   echo hello > /tmp/test  → escreve "hello" em /tmp/test (cria se não existe)
+//   echo hello                → exibe "hello" no terminal
+//   echo hello > /tmp/test    → escreve em /tmp/test (absoluto)
+//   echo hello > test.txt     → escreve em test.txt (relativo ao pwd)
+//   echo hello > ../tmp/test  → relativo com ..
 
 #include "cmd_echo.h"
 #include "../drivers/vga/vga.h"
 #include "../common/colors.h"
+#include "../common/string.h"
 #include "../fs/vfs.h"
 #include "../fs/ramfs.h"
-
-// Helpers
-static int echo_strlen(const char *s) {
-    int n = 0;
-    while (s[n]) n++;
-    return n;
-}
+#include "../shell/shell.h"
 
 void cmd_echo(const char *args) {
     if (!args || args[0] == '\0') {
@@ -43,7 +40,6 @@ void cmd_echo(const char *args) {
     }
 
     // Extrai o texto antes do '>'
-    // Copia texto (sem trailing spaces)
     char text[256];
     int text_len = 0;
     p = args;
@@ -63,49 +59,45 @@ void cmd_echo(const char *args) {
         return;
     }
 
-    // Resolve o diretório pai e nome do arquivo
-    // Encontra o último '/'
-    char dir_path[256];
-    char file_name[64];
-    int path_len = echo_strlen(path);
-
-    // Encontra último '/'
-    int last_slash = -1;
-    for (int i = 0; i < path_len; i++) {
-        if (path[i] == '/') last_slash = i;
+    // Remove espaços do final do path
+    char clean_path[256];
+    kstrcpy(clean_path, path, 256);
+    {
+        int plen = kstrlen(clean_path);
+        while (plen > 0 && clean_path[plen - 1] == ' ') plen--;
+        clean_path[plen] = '\0';
     }
 
-    if (last_slash <= 0) {
+    // Separa diretório pai e nome do arquivo
+    // Encontra último '/'
+    int path_len = kstrlen(clean_path);
+    int last_slash = -1;
+    for (int i = 0; i < path_len; i++) {
+        if (clean_path[i] == '/') last_slash = i;
+    }
+
+    char dir_path[256];
+    char file_name[64];
+
+    if (clean_path[0] == '/' && last_slash == 0) {
         // Arquivo na raiz: /test.txt
-        dir_path[0] = '/';
-        dir_path[1] = '\0';
-        // Nome começa após o último '/'
-        int ni = 0;
-        int start = (last_slash >= 0) ? last_slash + 1 : 0;
-        for (int i = start; i < path_len && ni < 63; i++) {
-            file_name[ni++] = path[i];
-        }
-        file_name[ni] = '\0';
-    } else {
-        // Diretório + arquivo
+        kstrcpy(dir_path, "/", 256);
+        kstrcpy(file_name, clean_path + 1, 64);
+    } else if (last_slash > 0) {
+        // Caminho com diretório: /tmp/test.txt ou ../tmp/test.txt
+        // dir_path = tudo antes do último '/'
         int di = 0;
         for (int i = 0; i < last_slash && di < 255; i++) {
-            dir_path[di++] = path[i];
+            dir_path[di++] = clean_path[i];
         }
         dir_path[di] = '\0';
 
-        int ni = 0;
-        for (int i = last_slash + 1; i < path_len && ni < 63; i++) {
-            file_name[ni++] = path[i];
-        }
-        file_name[ni] = '\0';
-    }
-
-    // Remove espaços do nome do arquivo
-    {
-        int ni = echo_strlen(file_name);
-        while (ni > 0 && file_name[ni - 1] == ' ') ni--;
-        file_name[ni] = '\0';
+        // file_name = tudo após o último '/'
+        kstrcpy(file_name, clean_path + last_slash + 1, 64);
+    } else {
+        // Sem '/' — arquivo no diretório atual
+        kstrcpy(dir_path, current_path, 256);
+        kstrcpy(file_name, clean_path, 64);
     }
 
     if (file_name[0] == '\0') {
@@ -113,8 +105,8 @@ void cmd_echo(const char *args) {
         return;
     }
 
-    // Abre o diretório pai
-    vfs_node_t *parent = vfs_open(dir_path);
+    // Resolve o diretório pai (absoluto ou relativo)
+    vfs_node_t *parent = vfs_resolve(dir_path, current_dir, NULL, 0);
     if (!parent || !(parent->type & VFS_DIRECTORY)) {
         vga_puts_color("echo: diretorio nao encontrado: ", THEME_ERROR);
         vga_puts_color(dir_path, THEME_WARNING);
@@ -145,6 +137,6 @@ void cmd_echo(const char *args) {
     vga_puts_color("Escrito ", THEME_DIM);
     vga_putint(text_len);
     vga_puts_color(" bytes em ", THEME_DIM);
-    vga_puts_color(path, THEME_INFO);
+    vga_puts_color(clean_path, THEME_INFO);
     vga_putchar('\n');
 }

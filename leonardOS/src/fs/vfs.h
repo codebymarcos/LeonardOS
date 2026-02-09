@@ -60,6 +60,21 @@ void vfs_mount_root(vfs_node_t *root);
 // Retorna NULL se não encontrar
 vfs_node_t *vfs_open(const char *path);
 
+// Resolve path absoluto OU relativo a partir de base_dir
+// Suporta ".", "..", e caminhos multi-nível (ex: "../tmp/file")
+// Se path começa com '/', resolve como absoluto (ignora base_dir)
+// Retorna NULL se não encontrar
+// Também preenche resolved_path (se não-NULL) com o path absoluto canônico
+vfs_node_t *vfs_resolve(const char *path, vfs_node_t *base_dir,
+                         char *resolved_path, int resolved_max);
+
+// Constrói path absoluto canônico a partir de base + relative
+// Resolve ".", ".." e barras duplicadas
+// Resultado vai em out_path (até max chars)
+// Retorna true se o path resultante é válido
+bool vfs_build_path(const char *base_path, const char *relative,
+                     char *out_path, int max);
+
 // Lê bytes de um nó (arquivo)
 // Retorna quantidade de bytes lidos
 uint32_t vfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffer);
