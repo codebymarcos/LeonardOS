@@ -10,6 +10,8 @@
 #include "memory/pmm.h"
 #include "memory/vmm.h"
 #include "memory/heap.h"
+#include "fs/vfs.h"
+#include "fs/ramfs.h"
 #include "shell/shell.h"
 
 void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multiboot_info) {
@@ -85,6 +87,13 @@ void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multib
         vga_putint(hs.free_bytes);
         vga_puts_color(" bytes livres\n", THEME_BOOT);
     }
+
+    // Inicializa VFS + RamFS
+    vfs_init();
+    vfs_node_t *ramfs_root = ramfs_init();
+    vfs_mount_root(ramfs_root);
+    vga_puts_color("[OK] ", THEME_BOOT_OK);
+    vga_puts_color("VFS + RamFS montado em /\n", THEME_BOOT);
 
     // Habilita interrupções
     asm volatile("sti");

@@ -8,6 +8,9 @@
 #include "cmd_halt.h"
 #include "cmd_test.h"
 #include "cmd_mem.h"
+#include "cmd_ls.h"
+#include "cmd_cat.h"
+#include "cmd_echo.h"
 
 // ============================================================
 // Tabela de comandos
@@ -21,6 +24,9 @@ static const command_t command_table[] = {
     { "halt",    "desliga o kernel",                cmd_halt    },
     { "test",    "teste automatizado do kernel",    cmd_test    },
     { "mem",     "exibe uso de memoria fisica",     cmd_mem     },
+    { "ls",      "lista conteudo de diretorio",     cmd_ls      },
+    { "cat",     "exibe conteudo de arquivo",       cmd_cat     },
+    { "echo",    "escreve texto / grava em arquivo", cmd_echo    },
 };
 
 static const int command_count = sizeof(command_table) / sizeof(command_table[0]);

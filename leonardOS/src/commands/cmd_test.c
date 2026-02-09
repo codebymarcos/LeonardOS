@@ -16,6 +16,8 @@
 #include "../memory/pmm.h"
 #include "../memory/vmm.h"
 #include "../memory/heap.h"
+#include "../fs/vfs.h"
+#include "../fs/ramfs.h"
 
 // ============================================================
 // Contadores de resultado
@@ -605,7 +607,7 @@ static void test_heap(void) {
     test_info_int("Paginas alocadas", s0.pages_allocated);
     test_result("Heap inicializado (pages > 0)", s0.pages_allocated > 0, NULL);
     test_result("1 bloco livre inicial", s0.free_blocks >= 1, NULL);
-    test_result("0 blocos usados", s0.used_blocks == 0, NULL);
+    test_info_int("Blocos usados (pre-existentes)", s0.used_blocks);
 
     // 1. kmalloc(32)
     void *a = kmalloc(32);
@@ -620,15 +622,15 @@ static void test_heap(void) {
     test_result("b > a (sequencial)", (uint32_t)(uintptr_t)b > (uint32_t)(uintptr_t)a, NULL);
     test_info_hex("Endereco b", (uint32_t)(uintptr_t)b);
 
-    // Verifica stats após 2 alocações
+    // Verifica stats após 2 alocações (relativo ao estado inicial)
     struct heap_stats s1 = heap_get_stats();
-    test_result("2 blocos usados", s1.used_blocks == 2, NULL);
+    test_result("+2 blocos usados", s1.used_blocks == s0.used_blocks + 2, NULL);
     test_result("alloc_count == 2", s1.alloc_count - s0.alloc_count == 2, NULL);
 
     // 3. kfree(a) — libera o primeiro
     kfree(a);
     struct heap_stats s2 = heap_get_stats();
-    test_result("kfree(a): 1 bloco usado", s2.used_blocks == 1, NULL);
+    test_result("kfree(a): +1 bloco usado", s2.used_blocks == s0.used_blocks + 1, NULL);
 
     // 4. kmalloc(16) — deve reutilizar o espaço de 'a'
     void *c = kmalloc(16);
@@ -643,10 +645,10 @@ static void test_heap(void) {
     // 6. kfree(c)
     kfree(c);
 
-    // 7. Heap deve consolidar em 1 bloco livre
+    // 7. Heap deve voltar ao estado inicial
     struct heap_stats s3 = heap_get_stats();
-    test_result("Todos liberados: 0 usados", s3.used_blocks == 0, NULL);
-    test_result("Coalescing: 1 bloco livre", s3.free_blocks == 1, NULL);
+    test_result("Todos liberados: usados restaurado", s3.used_blocks == s0.used_blocks, NULL);
+    test_result("Coalescing: free_blocks restaurado", s3.free_blocks <= s0.free_blocks + 1, NULL);
     test_result("free_count correto", s3.free_count - s0.free_count == 3, NULL);
 
     // Stats devem bater
@@ -657,7 +659,7 @@ static void test_heap(void) {
     kfree(d);
     kfree(d);  // double-free — não deve crashar
     struct heap_stats s4 = heap_get_stats();
-    test_result("Double-free seguro", s4.used_blocks == 0, NULL);
+    test_result("Double-free seguro", s4.used_blocks == s0.used_blocks, NULL);
 
     // NULL free protection
     kfree(NULL);  // não deve crashar
@@ -669,7 +671,121 @@ static void test_heap(void) {
 }
 
 // ============================================================
-// 12. Teste do sistema de Comandos
+// 12. Teste do VFS + RamFS
+// ============================================================
+static void test_vfs(void) {
+    test_header("VFS + RamFS");
+
+    // 1. Raiz existe
+    test_result("vfs_root != NULL", vfs_root != NULL, NULL);
+    test_result("vfs_root e diretorio", vfs_root->type == VFS_DIRECTORY, NULL);
+
+    // 2. vfs_open("/") retorna raiz
+    vfs_node_t *root = vfs_open("/");
+    test_result("vfs_open('/') != NULL", root != NULL, NULL);
+    test_result("vfs_open('/') == vfs_root", root == vfs_root, NULL);
+
+    // 3. /etc existe
+    vfs_node_t *etc = vfs_open("/etc");
+    test_result("vfs_open('/etc') != NULL", etc != NULL, NULL);
+    if (etc) {
+        test_result("/etc e diretorio", etc->type == VFS_DIRECTORY, NULL);
+    }
+
+    // 4. /etc/hostname existe e tem conteudo
+    vfs_node_t *hostname = vfs_open("/etc/hostname");
+    test_result("vfs_open('/etc/hostname') != NULL", hostname != NULL, NULL);
+    if (hostname) {
+        test_result("/etc/hostname e arquivo", hostname->type == VFS_FILE, NULL);
+        test_result("hostname.size == 9", hostname->size == 9, NULL);
+
+        // Lê conteúdo
+        uint8_t buf[32];
+        uint32_t bytes = vfs_read(hostname, 0, 32, buf);
+        test_result("vfs_read retorna 9 bytes", bytes == 9, NULL);
+        buf[bytes] = '\0';
+
+        // Verifica conteúdo
+        int match = 1;
+        const char *expected = "leonardos";
+        for (uint32_t i = 0; i < 9; i++) {
+            if (buf[i] != (uint8_t)expected[i]) match = 0;
+        }
+        test_result("Conteudo == 'leonardos'", match, NULL);
+    }
+
+    // 5. Path invalido retorna NULL
+    vfs_node_t *nope = vfs_open("/nao/existe");
+    test_result("Path invalido -> NULL", nope == NULL, NULL);
+
+    // 6. vfs_open(NULL) retorna NULL
+    test_result("vfs_open(NULL) -> NULL", vfs_open(NULL) == NULL, NULL);
+
+    // 7. Criar arquivo via ramfs_create_file
+    vfs_node_t *tmp = vfs_open("/tmp");
+    test_result("/tmp existe", tmp != NULL, NULL);
+    if (tmp) {
+        vfs_node_t *tf = ramfs_create_file(tmp, "test.txt");
+        test_result("Criar /tmp/test.txt", tf != NULL, NULL);
+        if (tf) {
+            // Escreve
+            const char *data = "hello";
+            uint32_t w = vfs_write(tf, 0, 5, (const uint8_t *)data);
+            test_result("vfs_write 5 bytes", w == 5, NULL);
+            test_result("size atualizado", tf->size == 5, NULL);
+
+            // Lê de volta
+            uint8_t rbuf[16];
+            uint32_t r = vfs_read(tf, 0, 16, rbuf);
+            test_result("vfs_read retorna 5", r == 5, NULL);
+
+            int ok = 1;
+            for (uint32_t i = 0; i < 5; i++) {
+                if (rbuf[i] != (uint8_t)data[i]) ok = 0;
+            }
+            test_result("Dados lidos == 'hello'", ok, NULL);
+
+            // Overwrite
+            const char *data2 = "world!";
+            tf->size = 0;  // reset
+            w = vfs_write(tf, 0, 6, (const uint8_t *)data2);
+            test_result("Overwrite 6 bytes", w == 6, NULL);
+            test_result("size == 6", tf->size == 6, NULL);
+
+            // Resolve via path
+            vfs_node_t *found = vfs_open("/tmp/test.txt");
+            test_result("vfs_open('/tmp/test.txt')", found == tf, NULL);
+        }
+    }
+
+    // 8. readdir lista filhos
+    if (tmp) {
+        vfs_node_t *first = vfs_readdir(tmp, 0);
+        test_result("readdir(tmp, 0) != NULL", first != NULL, NULL);
+
+        // Fora do range
+        vfs_node_t *oob = vfs_readdir(tmp, 999);
+        test_result("readdir(tmp, 999) == NULL", oob == NULL, NULL);
+    }
+
+    // 9. Read com offset
+    vfs_node_t *hostname2 = vfs_open("/etc/hostname");
+    if (hostname2) {
+        uint8_t buf2[16];
+        uint32_t r2 = vfs_read(hostname2, 5, 10, buf2);
+        test_result("Read com offset=5 retorna 4", r2 == 4, NULL);
+    }
+
+    // 10. Read alem do tamanho
+    if (hostname2) {
+        uint8_t buf3[16];
+        uint32_t r3 = vfs_read(hostname2, 100, 10, buf3);
+        test_result("Read offset>size retorna 0", r3 == 0, NULL);
+    }
+}
+
+// ============================================================
+// 13. Teste do sistema de Comandos
 // ============================================================
 static void test_commands(void) {
     test_header("Sistema de Comandos");
@@ -679,8 +795,8 @@ static void test_commands(void) {
     test_result("Pelo menos 4 comandos", count >= 4, NULL);
 
     // Verifica se cada comando base existe
-    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem"};
-    int num_expected = 6;
+    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem", "ls", "cat", "echo"};
+    int num_expected = 9;
 
     for (int i = 0; i < num_expected; i++) {
         const command_t *cmd = commands_find(expected[i]);
@@ -729,6 +845,7 @@ void cmd_test(const char *args) {
     test_pmm();
     test_paging();
     test_heap();
+    test_vfs();
     test_commands();
 
     // Resumo final

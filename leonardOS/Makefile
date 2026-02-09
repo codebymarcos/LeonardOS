@@ -27,6 +27,11 @@ CMD_MEM_C = src/commands/cmd_mem.c
 PMM_C = src/memory/pmm.c
 VMM_C = src/memory/vmm.c
 HEAP_C = src/memory/heap.c
+VFS_C = src/fs/vfs.c
+RAMFS_C = src/fs/ramfs.c
+CMD_LS_C = src/commands/cmd_ls.c
+CMD_CAT_C = src/commands/cmd_cat.c
+CMD_ECHO_C = src/commands/cmd_echo.c
 
 OBJ_BOOT = build/boot.o
 OBJ_KERNEL = build/kernel.o
@@ -49,10 +54,16 @@ OBJ_CMD_MEM = build/cmd_mem.o
 OBJ_PMM = build/pmm.o
 OBJ_VMM = build/vmm.o
 OBJ_HEAP = build/heap.o
+OBJ_VFS = build/vfs.o
+OBJ_RAMFS = build/ramfs.o
+OBJ_CMD_LS = build/cmd_ls.o
+OBJ_CMD_CAT = build/cmd_cat.o
+OBJ_CMD_ECHO = build/cmd_echo.o
 OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
           $(OBJ_GDT) $(OBJ_GDT_FLUSH) $(OBJ_IDT) $(OBJ_ISR) $(OBJ_ISR_STUB) $(OBJ_PIC) \
           $(OBJ_CMD_COMMANDS) $(OBJ_CMD_HELP) $(OBJ_CMD_CLEAR) $(OBJ_CMD_SYSINFO) $(OBJ_CMD_HALT) \
-          $(OBJ_CMD_TEST) $(OBJ_CMD_MEM) $(OBJ_PMM) $(OBJ_VMM) $(OBJ_HEAP)
+          $(OBJ_CMD_TEST) $(OBJ_CMD_MEM) $(OBJ_CMD_LS) $(OBJ_CMD_CAT) $(OBJ_CMD_ECHO) \
+          $(OBJ_PMM) $(OBJ_VMM) $(OBJ_HEAP) $(OBJ_VFS) $(OBJ_RAMFS)
 
 TARGET = build/kernel.elf
 ISO = build/leonardos.iso
@@ -143,6 +154,26 @@ build/vmm.o: $(VMM_C)
 	$(CC) $(CFLAGS) $< -o $@
 
 build/heap.o: $(HEAP_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/vfs.o: $(VFS_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/ramfs.o: $(RAMFS_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/cmd_ls.o: $(CMD_LS_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/cmd_cat.o: $(CMD_CAT_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/cmd_echo.o: $(CMD_ECHO_C)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@
 
