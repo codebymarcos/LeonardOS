@@ -1,5 +1,5 @@
-// LeonardOS - HTTP/1.0 Client
-// GET requests via TCP, com DNS resolution
+// LeonardOS - HTTP/1.1 Client
+// GET requests via TCP, com Keep-Alive, Chunked Transfer, Redirect
 
 #include "http.h"
 #include "tcp.h"
@@ -20,6 +20,21 @@ static http_stats_t stats;
 http_stats_t http_get_stats(void) {
     return stats;
 }
+
+// ============================================================
+// Keep-Alive connection cache
+// ============================================================
+typedef struct {
+    bool     active;
+    char     host[HTTP_MAX_HOST];
+    uint16_t port;
+    int      conn_id;           // TCP connection id
+    uint32_t last_use_ms;       // Timestamp do último uso
+} http_keepalive_t;
+
+static http_keepalive_t ka_cache[HTTP_KEEPALIVE_MAX];
+
+#define HTTP_KEEPALIVE_TIMEOUT_MS 30000  // 30s idle timeout
 
 // ============================================================
 // Utilitários de string para HTTP
@@ -94,6 +109,149 @@ static const char *http_find_header(const char *headers, const char *name) {
     return 0;
 }
 
+// Compara header value case-insensitive (até \r ou \n)
+static bool http_header_contains(const char *header_val, const char *needle) {
+    if (!header_val || !needle) return false;
+    int nlen = kstrlen(needle);
+
+    while (*header_val && *header_val != '\r' && *header_val != '\n') {
+        bool match = true;
+        for (int i = 0; i < nlen; i++) {
+            if (ktolower(header_val[i]) != ktolower(needle[i])) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return true;
+        header_val++;
+    }
+    return false;
+}
+
+// ============================================================
+// Keep-Alive: busca conexão cached para host:port
+// ============================================================
+static int ka_find(const char *host, uint16_t port) {
+    uint32_t now = pit_get_ms();
+
+    for (int i = 0; i < HTTP_KEEPALIVE_MAX; i++) {
+        if (!ka_cache[i].active) continue;
+
+        // Verifica timeout
+        if ((now - ka_cache[i].last_use_ms) > HTTP_KEEPALIVE_TIMEOUT_MS) {
+            tcp_close(ka_cache[i].conn_id);
+            ka_cache[i].active = false;
+            continue;
+        }
+
+        // Verifica se conexão TCP ainda está viva
+        if (!tcp_is_connected(ka_cache[i].conn_id)) {
+            ka_cache[i].active = false;
+            continue;
+        }
+
+        // Match host e port
+        if (kstrcmp(ka_cache[i].host, host) == 0 && ka_cache[i].port == port) {
+            ka_cache[i].last_use_ms = now;
+            stats.keepalive_reuse++;
+            return ka_cache[i].conn_id;
+        }
+    }
+    return -1;  // Não encontrado
+}
+
+// Salva conexão no cache keep-alive
+static void ka_store(const char *host, uint16_t port, int conn_id) {
+    // Procura slot livre ou mais antigo
+    int oldest = 0;
+    uint32_t oldest_time = 0xFFFFFFFF;
+
+    for (int i = 0; i < HTTP_KEEPALIVE_MAX; i++) {
+        if (!ka_cache[i].active) {
+            oldest = i;
+            break;
+        }
+        if (ka_cache[i].last_use_ms < oldest_time) {
+            oldest_time = ka_cache[i].last_use_ms;
+            oldest = i;
+        }
+    }
+
+    // Fecha conexão antiga se ocupado
+    if (ka_cache[oldest].active) {
+        tcp_close(ka_cache[oldest].conn_id);
+    }
+
+    kstrcpy(ka_cache[oldest].host, host, HTTP_MAX_HOST);
+    ka_cache[oldest].port = port;
+    ka_cache[oldest].conn_id = conn_id;
+    ka_cache[oldest].last_use_ms = pit_get_ms();
+    ka_cache[oldest].active = true;
+}
+
+// Fecha todas as conexões keep-alive
+void http_close_keepalive(void) {
+    for (int i = 0; i < HTTP_KEEPALIVE_MAX; i++) {
+        if (ka_cache[i].active) {
+            tcp_close(ka_cache[i].conn_id);
+            ka_cache[i].active = false;
+        }
+    }
+}
+
+// ============================================================
+// Chunked Transfer Encoding decoder
+// Decodifica body chunked in-place no buffer
+// Retorna tamanho total do body decodificado
+// ============================================================
+static int http_decode_chunked(const uint8_t *src, int src_len,
+                               uint8_t *dst, int dst_max) {
+    int src_pos = 0;
+    int dst_pos = 0;
+
+    while (src_pos < src_len) {
+        // Parse chunk size (hex)
+        int chunk_size = 0;
+        while (src_pos < src_len) {
+            char c = (char)src[src_pos];
+            if (c >= '0' && c <= '9') {
+                chunk_size = chunk_size * 16 + (c - '0');
+            } else if (c >= 'a' && c <= 'f') {
+                chunk_size = chunk_size * 16 + (c - 'a' + 10);
+            } else if (c >= 'A' && c <= 'F') {
+                chunk_size = chunk_size * 16 + (c - 'A' + 10);
+            } else {
+                break;
+            }
+            src_pos++;
+        }
+
+        // Pula \r\n após tamanho
+        while (src_pos < src_len && (src[src_pos] == '\r' || src[src_pos] == '\n'))
+            src_pos++;
+
+        // Chunk de tamanho 0 = fim
+        if (chunk_size == 0) break;
+
+        // Copia dados do chunk
+        int to_copy = chunk_size;
+        if (dst_pos + to_copy > dst_max) {
+            to_copy = dst_max - dst_pos;
+        }
+        if (to_copy > 0 && src_pos + to_copy <= src_len) {
+            kmemcpy(dst + dst_pos, src + src_pos, (uint16_t)to_copy);
+            dst_pos += to_copy;
+        }
+        src_pos += chunk_size;
+
+        // Pula \r\n após dados do chunk
+        while (src_pos < src_len && (src[src_pos] == '\r' || src[src_pos] == '\n'))
+            src_pos++;
+    }
+
+    return dst_pos;
+}
+
 // ============================================================
 // http_parse_url — parseia http://host[:port]/path
 // ============================================================
@@ -138,10 +296,11 @@ bool http_parse_url(const char *url, http_url_t *out) {
 }
 
 // ============================================================
-// http_do_request — faz um HTTP/1.0 GET para uma URL já parseada
+// http_do_request — faz um HTTP/1.1 GET para uma URL já parseada
 // Função interna usada por http_get (com suporte a redirect)
 // ============================================================
-static bool http_do_request(const http_url_t *parsed, http_response_t *response) {
+static bool http_do_request(const http_url_t *parsed, http_response_t *response,
+                            http_progress_fn progress) {
     // Resolve hostname para IP
     ip_addr_t server_ip;
     if (!dns_resolve(parsed->host, &server_ip)) {
@@ -149,36 +308,42 @@ static bool http_do_request(const http_url_t *parsed, http_response_t *response)
         return false;
     }
 
-    // ARP pre-resolve (para gateway)
-    {
-        net_config_t *cfg = net_get_config();
-        uint8_t dummy[6];
-        arp_resolve(cfg->gateway, dummy);
-        pit_sleep_ms(50);
-        arp_resolve(cfg->gateway, dummy);
-    }
+    // Tenta reutilizar conexão keep-alive
+    int conn = ka_find(parsed->host, parsed->port);
+    bool reused = (conn >= 0);
 
-    // Conecta via TCP
-    int conn = tcp_connect(server_ip, parsed->port, 5000);
-    if (conn < 0) {
-        stats.connect_failed++;
-        return false;
+    if (!reused) {
+        // ARP pre-resolve (para gateway)
+        {
+            net_config_t *cfg = net_get_config();
+            uint8_t dummy[6];
+            arp_resolve(cfg->gateway, dummy);
+            pit_sleep_ms(50);
+            arp_resolve(cfg->gateway, dummy);
+        }
+
+        // Conecta via TCP
+        conn = tcp_connect(server_ip, parsed->port, 5000);
+        if (conn < 0) {
+            stats.connect_failed++;
+            return false;
+        }
     }
 
     stats.requests_sent++;
 
-    // Monta request HTTP/1.0
+    // Monta request HTTP/1.1
     static char request[512];
     int pos = 0;
 
-    // GET /path HTTP/1.0\r\n
+    // GET /path HTTP/1.1\r\n
     const char *get = "GET ";
     for (int j = 0; get[j]; j++) request[pos++] = get[j];
     for (int j = 0; parsed->path[j]; j++) request[pos++] = parsed->path[j];
-    const char *ver = " HTTP/1.0\r\n";
+    const char *ver = " HTTP/1.1\r\n";
     for (int j = 0; ver[j]; j++) request[pos++] = ver[j];
 
-    // Host: hostname\r\n
+    // Host: hostname\r\n (obrigatório em HTTP/1.1)
     const char *host_h = "Host: ";
     for (int j = 0; host_h[j]; j++) request[pos++] = host_h[j];
     for (int j = 0; parsed->host[j]; j++) request[pos++] = parsed->host[j];
@@ -188,8 +353,12 @@ static bool http_do_request(const http_url_t *parsed, http_response_t *response)
     const char *ua = "User-Agent: LeonardOS/1.0.0\r\n";
     for (int j = 0; ua[j]; j++) request[pos++] = ua[j];
 
-    // Connection: close
-    const char *cc = "Connection: close\r\n";
+    // Accept encoding (no compression, we can't decompress)
+    const char *ae = "Accept-Encoding: identity\r\n";
+    for (int j = 0; ae[j]; j++) request[pos++] = ae[j];
+
+    // Connection: keep-alive
+    const char *cc = "Connection: keep-alive\r\n";
     for (int j = 0; cc[j]; j++) request[pos++] = cc[j];
 
     // End of headers
@@ -199,9 +368,26 @@ static bool http_do_request(const http_url_t *parsed, http_response_t *response)
     // Envia request
     int sent = tcp_send(conn, request, (uint16_t)pos);
     if (sent < 0) {
-        tcp_close(conn);
-        stats.responses_error++;
-        return false;
+        // Se conexão reutilizada morreu, tenta nova
+        if (reused) {
+            tcp_close(conn);
+            conn = tcp_connect(server_ip, parsed->port, 5000);
+            if (conn < 0) {
+                stats.connect_failed++;
+                return false;
+            }
+            reused = false;
+            sent = tcp_send(conn, request, (uint16_t)pos);
+            if (sent < 0) {
+                tcp_close(conn);
+                stats.responses_error++;
+                return false;
+            }
+        } else {
+            tcp_close(conn);
+            stats.responses_error++;
+            return false;
+        }
     }
 
     // Recebe response (headers + body)
@@ -209,48 +395,29 @@ static bool http_do_request(const http_url_t *parsed, http_response_t *response)
     int total_received = 0;
     int max_raw = (int)sizeof(raw_buf) - 1;
 
-    // Recebe com timeout
-    while (total_received < max_raw) {
+    // Fase 1: Receber headers (até \r\n\r\n)
+    int header_end = -1;
+    while (total_received < max_raw && header_end < 0) {
         uint16_t chunk_size = (uint16_t)(max_raw - total_received);
         if (chunk_size > 4096) chunk_size = 4096;
 
         int chunk = tcp_recv(conn, raw_buf + total_received, chunk_size, 3000);
-
         if (chunk < 0) break;
         if (chunk == 0) break;
-
         total_received += chunk;
 
-        if (tcp_peer_closed(conn)) break;
-    }
-
-    tcp_close(conn);
-
-    if (total_received == 0) {
-        stats.responses_error++;
-        return false;
-    }
-
-    raw_buf[total_received] = '\0';
-
-    // Separa headers e body (procura \r\n\r\n)
-    int header_end = -1;
-    for (int j = 0; j < total_received - 3; j++) {
-        if (raw_buf[j]   == '\r' && raw_buf[j+1] == '\n' &&
-            raw_buf[j+2] == '\r' && raw_buf[j+3] == '\n') {
-            header_end = j;
-            break;
+        // Procura fim dos headers
+        for (int j = 0; j < total_received - 3; j++) {
+            if (raw_buf[j] == '\r' && raw_buf[j+1] == '\n' &&
+                raw_buf[j+2] == '\r' && raw_buf[j+3] == '\n') {
+                header_end = j;
+                break;
+            }
         }
     }
 
     if (header_end < 0) {
-        uint16_t blen = (uint16_t)total_received;
-        if (blen > HTTP_BODY_BUF_SIZE) {
-            blen = HTTP_BODY_BUF_SIZE;
-            response->truncated = true;
-        }
-        kmemcpy(response->body, raw_buf, blen);
-        response->body_len = blen;
+        if (!reused) tcp_close(conn);
         stats.responses_error++;
         return false;
     }
@@ -261,19 +428,6 @@ static bool http_do_request(const http_url_t *parsed, http_response_t *response)
     kmemcpy(response->headers, raw_buf, hlen);
     response->headers[hlen] = '\0';
     response->headers_len = hlen;
-
-    // Copia body
-    int body_start = header_end + 4;
-    int body_available = total_received - body_start;
-    if (body_available > 0) {
-        uint16_t blen = (uint16_t)body_available;
-        if (blen > HTTP_BODY_BUF_SIZE) {
-            blen = HTTP_BODY_BUF_SIZE;
-            response->truncated = true;
-        }
-        kmemcpy(response->body, raw_buf + body_start, blen);
-        response->body_len = blen;
-    }
 
     // Parse status code
     if (kstrncmp(response->headers, "HTTP/", 5) == 0) {
@@ -291,12 +445,132 @@ static bool http_do_request(const http_url_t *parsed, http_response_t *response)
         response->content_length = str_to_int(cl);
     }
 
+    // Parse Transfer-Encoding: chunked
+    const char *te = http_find_header(response->headers, "transfer-encoding");
+    if (te && http_header_contains(te, "chunked")) {
+        response->chunked = true;
+    }
+
+    // Parse Connection: keep-alive / close
+    const char *conn_hdr = http_find_header(response->headers, "connection");
+    if (conn_hdr) {
+        response->keep_alive = http_header_contains(conn_hdr, "keep-alive");
+    } else {
+        // HTTP/1.1 default é keep-alive
+        response->keep_alive = true;
+    }
+
+    // Fase 2: Receber body
+    int body_start = header_end + 4;
+    int body_in_buf = total_received - body_start;
+
+    // Determina quanto mais precisamos ler
+    bool need_more = true;
+    if (!response->chunked && response->content_length >= 0) {
+        // Temos Content-Length: ler exatamente essa quantidade
+        int remaining = response->content_length - body_in_buf;
+        while (remaining > 0 && total_received < max_raw) {
+            uint16_t chunk_size = (uint16_t)(max_raw - total_received);
+            if (chunk_size > 4096) chunk_size = 4096;
+            if ((int)chunk_size > remaining) chunk_size = (uint16_t)remaining;
+
+            int chunk = tcp_recv(conn, raw_buf + total_received, chunk_size, 3000);
+            if (chunk <= 0) break;
+            total_received += chunk;
+            remaining -= chunk;
+
+            // Progress callback
+            if (progress) {
+                progress(total_received - body_start, response->content_length);
+            }
+        }
+        need_more = false;
+    }
+
+    if (need_more) {
+        // Sem Content-Length ou chunked: ler até fechar ou buffer cheio
+        while (total_received < max_raw) {
+            uint16_t chunk_size = (uint16_t)(max_raw - total_received);
+            if (chunk_size > 4096) chunk_size = 4096;
+
+            int chunk = tcp_recv(conn, raw_buf + total_received, chunk_size, 3000);
+            if (chunk <= 0) break;
+            total_received += chunk;
+
+            if (progress) {
+                progress(total_received - body_start, response->content_length);
+            }
+
+            if (tcp_peer_closed(conn)) break;
+
+            // Para chunked: verifica se já temos o chunk final (0\r\n\r\n)
+            if (response->chunked) {
+                // Procura "0\r\n\r\n" no final do buffer
+                int end = total_received;
+                if (end >= 5 &&
+                    raw_buf[end-5] == '0' && raw_buf[end-4] == '\r' &&
+                    raw_buf[end-3] == '\n' && raw_buf[end-2] == '\r' &&
+                    raw_buf[end-1] == '\n') {
+                    break;
+                }
+                // Variante: "0\r\n\r\n" com body antes
+                bool found_end = false;
+                for (int j = body_start; j < end - 4; j++) {
+                    if (raw_buf[j] == '\r' && raw_buf[j+1] == '\n' &&
+                        raw_buf[j+2] == '0' && raw_buf[j+3] == '\r' &&
+                        raw_buf[j+4] == '\n') {
+                        found_end = true;
+                        break;
+                    }
+                }
+                if (found_end) break;
+            }
+        }
+    }
+
+    raw_buf[total_received] = '\0';
+
+    // Copia body
+    int body_available = total_received - body_start;
+    if (body_available > 0) {
+        if (response->chunked) {
+            // Decodifica chunked transfer encoding
+            int decoded = http_decode_chunked(raw_buf + body_start, body_available,
+                                              response->body, HTTP_BODY_BUF_SIZE);
+            response->body_len = (uint16_t)decoded;
+            if (decoded >= HTTP_BODY_BUF_SIZE) response->truncated = true;
+            stats.chunked_responses++;
+        } else {
+            uint16_t blen = (uint16_t)body_available;
+            if (blen > HTTP_BODY_BUF_SIZE) {
+                blen = HTTP_BODY_BUF_SIZE;
+                response->truncated = true;
+            }
+            kmemcpy(response->body, raw_buf + body_start, blen);
+            response->body_len = blen;
+        }
+    }
+
     response->success = (response->status_code >= 200 && response->status_code < 300);
 
     if (response->success) {
         stats.responses_ok++;
     } else {
         stats.responses_error++;
+    }
+
+    // Gerencia conexão: keep-alive ou close
+    if (response->keep_alive && response->success) {
+        ka_store(parsed->host, parsed->port, conn);
+    } else {
+        // Remove do cache se estava lá
+        for (int i = 0; i < HTTP_KEEPALIVE_MAX; i++) {
+            if (ka_cache[i].active && ka_cache[i].conn_id == conn) {
+                ka_cache[i].active = false;
+                break;
+            }
+        }
+        tcp_close(conn);
     }
 
     return true;
@@ -346,9 +620,17 @@ static bool http_extract_location(const char *headers, const char *current_host,
 }
 
 // ============================================================
-// http_get — faz um HTTP/1.0 GET com suporte a redirect
+// http_get — faz um HTTP/1.1 GET com suporte a redirect
 // ============================================================
 bool http_get(const char *url, http_response_t *response) {
+    return http_get_with_progress(url, response, 0);
+}
+
+// ============================================================
+// http_get_with_progress — GET com callback de progresso
+// ============================================================
+bool http_get_with_progress(const char *url, http_response_t *response,
+                            http_progress_fn progress) {
     if (!url || !response) return false;
 
     kmemset(response, 0, sizeof(http_response_t));
@@ -373,7 +655,7 @@ bool http_get(const char *url, http_response_t *response) {
         response->redirect_count = saved_redirects;
 
         // Faz request
-        if (!http_do_request(&parsed, response)) {
+        if (!http_do_request(&parsed, response, progress)) {
             return false;
         }
 
@@ -383,20 +665,18 @@ bool http_get(const char *url, http_response_t *response) {
             response->status_code == 308) {
 
             if (redirect >= HTTP_MAX_REDIRECTS) {
-                // Too many redirects
-                return true;  // Retorna o response do último redirect
+                return true;
             }
 
             // Extrai Location header
             static char redir_url[HTTP_MAX_URL];
             if (!http_extract_location(response->headers, parsed.host,
                                        parsed.port, redir_url, HTTP_MAX_URL)) {
-                return true;  // Sem Location, retorna como está
+                return true;
             }
 
             response->redirect_count++;
             kstrcpy(current_url, redir_url, HTTP_MAX_URL);
-            // Delay curto entre redirects
             pit_sleep_ms(100);
             continue;
         }
@@ -406,7 +686,7 @@ bool http_get(const char *url, http_response_t *response) {
         return true;
     }
 
-    return true;  // Exauriu redirects
+    return true;
 }
 
 // ============================================================
@@ -414,7 +694,8 @@ bool http_get(const char *url, http_response_t *response) {
 // ============================================================
 void http_init(void) {
     kmemset(&stats, 0, sizeof(stats));
+    kmemset(ka_cache, 0, sizeof(ka_cache));
 
     vga_puts_color("[OK] ", THEME_BOOT_OK);
-    vga_puts_color("HTTP: client pronto\n", THEME_BOOT);
+    vga_puts_color("HTTP: client HTTP/1.1 pronto (keep-alive, chunked)\n", THEME_BOOT);
 }

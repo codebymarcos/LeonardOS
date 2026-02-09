@@ -1,5 +1,6 @@
 // LeonardOS - Comando: wget
 // Faz HTTP GET e exibe ou salva o conteúdo
+// Agora com barra de progresso e HTTP/1.1 (keep-alive, chunked)
 //
 // Uso: wget <url>              — exibe conteúdo na tela
 //      wget <url> > arquivo    — salva em arquivo (via pipe do shell)
@@ -16,6 +17,71 @@
 #include "../net/http.h"
 #include "../net/dns.h"
 #include "../net/net_config.h"
+
+// ============================================================
+// Barra de progresso para download
+// VGA não tem \r, então usamos backspace para atualizar in-place
+// ============================================================
+static int last_progress_len = 0;
+
+static void wget_erase_progress(void) {
+    // Apaga caracteres anteriores com backspace
+    for (int i = 0; i < last_progress_len; i++) {
+        vga_putchar('\b');
+    }
+    last_progress_len = 0;
+}
+
+static void wget_progress(int received, int total) {
+    // Apaga barra anterior
+    wget_erase_progress();
+
+    // Constrói barra nova
+    char bar[60];
+    int pos = 0;
+
+    bar[pos++] = '[';
+
+    if (total > 0) {
+        int pct = (received * 100) / total;
+        if (pct > 100) pct = 100;
+        int filled = pct / 5;  // 20 chars
+
+        for (int i = 0; i < 20; i++) {
+            bar[pos++] = (i < filled) ? '#' : '-';
+        }
+        bar[pos++] = ']';
+        bar[pos++] = ' ';
+
+        // Percentual
+        if (pct >= 100)      { bar[pos++] = '1'; bar[pos++] = '0'; bar[pos++] = '0'; }
+        else if (pct >= 10)  { bar[pos++] = '0' + (pct / 10); bar[pos++] = '0' + (pct % 10); }
+        else                 { bar[pos++] = '0' + pct; }
+        bar[pos++] = '%';
+    } else {
+        // Sem Content-Length: spinner
+        static int spin_idx = 0;
+        const char spin[] = "|/-\\";
+        bar[pos++] = spin[spin_idx % 4];
+        spin_idx++;
+        bar[pos++] = ']';
+        bar[pos++] = ' ';
+
+        // Mostra bytes recebidos
+        char num[12];
+        int n = received;
+        int ni = 0;
+        if (n == 0) { num[ni++] = '0'; }
+        else { while (n > 0) { num[ni++] = '0' + (n % 10); n /= 10; } }
+        while (ni > 0) bar[pos++] = num[--ni];
+        bar[pos++] = 'B';
+    }
+
+    bar[pos] = '\0';
+    last_progress_len = pos;
+
+    vga_puts_color(bar, THEME_DIM);
+}
 
 void cmd_wget(const char *args) {
     if (!args || args[0] == '\0') {
@@ -76,9 +142,15 @@ void cmd_wget(const char *args) {
 
     vga_puts_color("  Conectando... ", THEME_DIM);
 
-    // Faz request HTTP
+    // Faz request HTTP com barra de progresso
     static http_response_t response;
-    bool ok = http_get(url, &response);
+    last_progress_len = 0;
+    bool ok = http_get_with_progress(url, &response, wget_progress);
+
+    // Limpa barra de progresso e vai para próxima linha
+    if (last_progress_len > 0) {
+        wget_erase_progress();
+    }
 
     if (!ok) {
         vga_puts_color("FALHOU\n", THEME_ERROR);
@@ -119,6 +191,14 @@ void cmd_wget(const char *args) {
             vga_puts_color(")", THEME_WARNING);
         }
         vga_putchar('\n');
+    }
+
+    // Mostra info de encoding e conexão
+    if (response.chunked) {
+        vga_puts_color("  Encoding: chunked\n", THEME_DIM);
+    }
+    if (response.keep_alive) {
+        vga_puts_color("  Conexao: keep-alive\n", THEME_DIM);
     }
 
     vga_putchar('\n');
