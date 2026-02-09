@@ -241,6 +241,59 @@ vfs_node_t *ramfs_create_dir(vfs_node_t *parent, const char *name) {
 }
 
 // ============================================================
+// ramfs_remove — Remove um nó do seu pai
+// ============================================================
+bool ramfs_remove(vfs_node_t *parent, const char *name) {
+    if (!parent || !(parent->type & VFS_DIRECTORY) || !name) return false;
+
+    ramfs_data_t *pd = (ramfs_data_t *)parent->fs_data;
+    if (!pd) return false;
+
+    // Encontra o índice do filho
+    int found_idx = -1;
+    for (uint32_t i = 0; i < pd->child_count; i++) {
+        if (ramfs_strcmp(pd->children[i]->name, name) == 0) {
+            found_idx = (int)i;
+            break;
+        }
+    }
+
+    if (found_idx < 0) return false;
+
+    vfs_node_t *child = pd->children[found_idx];
+
+    // Se for diretório, deve estar vazio
+    if (child->type & VFS_DIRECTORY) {
+        ramfs_data_t *cd = (ramfs_data_t *)child->fs_data;
+        if (cd && cd->child_count > 0) return false;
+    }
+
+    // Se for arquivo, libera buffer de dados
+    if (child->type & VFS_FILE) {
+        ramfs_data_t *cd = (ramfs_data_t *)child->fs_data;
+        if (cd && cd->data) {
+            kfree(cd->data);
+            cd->data = NULL;
+            cd->capacity = 0;
+        }
+    }
+
+    // Marca o nó como inválido (zera type)
+    child->type = 0;
+    child->size = 0;
+    child->name[0] = '\0';
+
+    // Remove da lista de filhos (shift left)
+    for (uint32_t i = (uint32_t)found_idx; i < pd->child_count - 1; i++) {
+        pd->children[i] = pd->children[i + 1];
+    }
+    pd->children[pd->child_count - 1] = NULL;
+    pd->child_count--;
+
+    return true;
+}
+
+// ============================================================
 // ramfs_init — Cria o filesystem raiz com estrutura inicial
 // ============================================================
 vfs_node_t *ramfs_init(void) {

@@ -55,4 +55,9 @@ vfs_node_t *ramfs_create_file(vfs_node_t *parent, const char *name);
 // Retorna o nó criado, ou NULL se falhar
 vfs_node_t *ramfs_create_dir(vfs_node_t *parent, const char *name);
 
+// Remove um nó (arquivo ou diretório vazio) do pai
+// Libera buffer de dados do arquivo se houver
+// Retorna true se removido com sucesso
+bool ramfs_remove(vfs_node_t *parent, const char *name);
+
 #endif

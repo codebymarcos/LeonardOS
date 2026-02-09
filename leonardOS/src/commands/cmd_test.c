@@ -796,8 +796,8 @@ static void test_commands(void) {
     test_result("Pelo menos 4 comandos", count >= 4, NULL);
 
     // Verifica se cada comando base existe
-    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem", "ls", "cat", "echo", "pwd", "cd", "mkdir", "touch"};
-    int num_expected = 13;
+    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem", "ls", "cat", "echo", "pwd", "cd", "mkdir", "touch", "rm", "cp"};
+    int num_expected = 15;
 
     for (int i = 0; i < num_expected; i++) {
         const command_t *cmd = commands_find(expected[i]);
@@ -900,7 +900,88 @@ static void test_pwd_cd(void) {
 }
 
 // ============================================================
-// 14. Teste do sistema de Comandos
+// 14. Teste de rm e cp
+// ============================================================
+static void test_rm_cp(void) {
+    test_header("rm / cp");
+
+    // Setup: cria estrutura de teste em /tmp
+    vfs_node_t *tmp = vfs_open("/tmp");
+    test_result("/tmp existe", tmp != NULL, NULL);
+    if (!tmp) return;
+
+    // --- Teste rm de arquivo ---
+    vfs_node_t *rf = ramfs_create_file(tmp, "rm_test.txt");
+    test_result("Criar /tmp/rm_test.txt", rf != NULL, NULL);
+    if (rf) {
+        const char *data = "delete me";
+        vfs_write(rf, 0, 9, (const uint8_t *)data);
+
+        int ok = ramfs_remove(tmp, "rm_test.txt");
+        test_result("ramfs_remove arquivo", ok, NULL);
+
+        vfs_node_t *gone = vfs_finddir(tmp, "rm_test.txt");
+        test_result("Arquivo removido = NULL", gone == NULL, NULL);
+    }
+
+    // --- Teste rm de diretório vazio ---
+    vfs_node_t *rd = ramfs_create_dir(tmp, "rm_dir");
+    test_result("Criar /tmp/rm_dir", rd != NULL, NULL);
+    if (rd) {
+        int ok = ramfs_remove(tmp, "rm_dir");
+        test_result("ramfs_remove dir vazio", ok, NULL);
+
+        vfs_node_t *gone = vfs_finddir(tmp, "rm_dir");
+        test_result("Dir removido = NULL", gone == NULL, NULL);
+    }
+
+    // --- Teste rm de diretório não-vazio falha ---
+    vfs_node_t *notempty = ramfs_create_dir(tmp, "rm_full");
+    if (notempty) {
+        ramfs_create_file(notempty, "inside.txt");
+        int ok = ramfs_remove(tmp, "rm_full");
+        test_result("rm dir nao-vazio falha", ok == 0, NULL);
+
+        // Limpa: remove o filho e depois o dir
+        ramfs_remove(notempty, "inside.txt");
+        ramfs_remove(tmp, "rm_full");
+    }
+
+    // --- Teste cp ---
+    vfs_node_t *src = ramfs_create_file(tmp, "cp_src.txt");
+    test_result("Criar /tmp/cp_src.txt", src != NULL, NULL);
+    if (src) {
+        const char *data = "copy me!";
+        vfs_write(src, 0, 8, (const uint8_t *)data);
+
+        // Copia via criação manual (simula o que cmd_cp faz)
+        vfs_node_t *dst = ramfs_create_file(tmp, "cp_dst.txt");
+        test_result("Criar /tmp/cp_dst.txt", dst != NULL, NULL);
+        if (dst) {
+            uint8_t buf[64];
+            uint32_t rd_bytes = vfs_read(src, 0, 64, buf);
+            uint32_t wr_bytes = vfs_write(dst, 0, rd_bytes, buf);
+            test_result("cp: bytes escritos == lidos", wr_bytes == rd_bytes, NULL);
+            test_result("cp: size destino == origem", dst->size == src->size, NULL);
+
+            // Verifica conteúdo
+            uint8_t verify[64];
+            vfs_read(dst, 0, 64, verify);
+            int match = 1;
+            for (uint32_t i = 0; i < 8; i++) {
+                if (verify[i] != (uint8_t)data[i]) match = 0;
+            }
+            test_result("cp: conteudo identico", match, NULL);
+
+            // Limpa
+            ramfs_remove(tmp, "cp_dst.txt");
+        }
+        ramfs_remove(tmp, "cp_src.txt");
+    }
+}
+
+// ============================================================
+// 15. Teste do sistema de Comandos
 // ============================================================
 void cmd_test(const char *args) {
     (void)args;
@@ -930,6 +1011,7 @@ void cmd_test(const char *args) {
     test_heap();
     test_vfs();
     test_pwd_cd();
+    test_rm_cp();
     test_commands();
 
     // Resumo final

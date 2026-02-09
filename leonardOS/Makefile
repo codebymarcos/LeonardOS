@@ -36,6 +36,8 @@ CMD_PWD_C = src/commands/cmd_pwd.c
 CMD_CD_C = src/commands/cmd_cd.c
 CMD_MKDIR_C = src/commands/cmd_mkdir.c
 CMD_TOUCH_C = src/commands/cmd_touch.c
+CMD_RM_C = src/commands/cmd_rm.c
+CMD_CP_C = src/commands/cmd_cp.c
 STRING_C = src/common/string.c
 
 OBJ_BOOT = build/boot.o
@@ -68,12 +70,15 @@ OBJ_CMD_PWD = build/cmd_pwd.o
 OBJ_CMD_CD = build/cmd_cd.o
 OBJ_CMD_MKDIR = build/cmd_mkdir.o
 OBJ_CMD_TOUCH = build/cmd_touch.o
+OBJ_CMD_RM = build/cmd_rm.o
+OBJ_CMD_CP = build/cmd_cp.o
 OBJ_STRING = build/string.o
 OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
           $(OBJ_GDT) $(OBJ_GDT_FLUSH) $(OBJ_IDT) $(OBJ_ISR) $(OBJ_ISR_STUB) $(OBJ_PIC) \
           $(OBJ_CMD_COMMANDS) $(OBJ_CMD_HELP) $(OBJ_CMD_CLEAR) $(OBJ_CMD_SYSINFO) $(OBJ_CMD_HALT) \
           $(OBJ_CMD_TEST) $(OBJ_CMD_MEM) $(OBJ_CMD_LS) $(OBJ_CMD_CAT) $(OBJ_CMD_ECHO) \
           $(OBJ_CMD_PWD) $(OBJ_CMD_CD) $(OBJ_CMD_MKDIR) $(OBJ_CMD_TOUCH) \
+          $(OBJ_CMD_RM) $(OBJ_CMD_CP) \
           $(OBJ_PMM) $(OBJ_VMM) $(OBJ_HEAP) $(OBJ_VFS) $(OBJ_RAMFS) $(OBJ_STRING)
 
 TARGET = build/kernel.elf
@@ -201,6 +206,14 @@ build/cmd_mkdir.o: $(CMD_MKDIR_C)
 	$(CC) $(CFLAGS) $< -o $@
 
 build/cmd_touch.o: $(CMD_TOUCH_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/cmd_rm.o: $(CMD_RM_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/cmd_cp.o: $(CMD_CP_C)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@
 
