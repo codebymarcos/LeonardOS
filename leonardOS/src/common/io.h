@@ -16,6 +16,11 @@ static inline void outw(uint16_t port, uint16_t val) {
     asm volatile("outw %0, %1" : : "a"(val), "Nd"(port));
 }
 
+// Escreve uma dword (32 bits) numa porta I/O
+static inline void outl(uint16_t port, uint32_t val) {
+    asm volatile("outl %0, %1" : : "a"(val), "Nd"(port));
+}
+
 // Lê um byte de uma porta I/O
 static inline uint8_t inb(uint16_t port) {
     uint8_t ret;
@@ -27,6 +32,13 @@ static inline uint8_t inb(uint16_t port) {
 static inline uint16_t inw(uint16_t port) {
     uint16_t ret;
     asm volatile("inw %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}
+
+// Lê uma dword (32 bits) de uma porta I/O
+static inline uint32_t inl(uint16_t port) {
+    uint32_t ret;
+    asm volatile("inl %1, %0" : "=a"(ret) : "Nd"(port));
     return ret;
 }
 

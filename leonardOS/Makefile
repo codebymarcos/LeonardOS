@@ -53,6 +53,9 @@ SCRIPT_C = src/shell/script.c
 STRING_C = src/common/string.c
 IDE_C = src/drivers/disk/ide.c
 LEONFS_C = src/fs/leonfs.c
+PCI_C = src/drivers/pci/pci.c
+RTL8139_C = src/drivers/net/rtl8139.c
+NET_CONFIG_C = src/net/net_config.c
 
 OBJ_BOOT = build/boot.o
 OBJ_KERNEL = build/kernel.o
@@ -101,6 +104,9 @@ OBJ_SCRIPT = build/script.o
 OBJ_STRING = build/string.o
 OBJ_IDE = build/ide.o
 OBJ_LEONFS = build/leonfs.o
+OBJ_PCI = build/pci.o
+OBJ_RTL8139 = build/rtl8139.o
+OBJ_NET_CONFIG = build/net_config.o
 OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
           $(OBJ_GDT) $(OBJ_GDT_FLUSH) $(OBJ_IDT) $(OBJ_ISR) $(OBJ_ISR_STUB) $(OBJ_PIC) \
           $(OBJ_CMD_COMMANDS) $(OBJ_CMD_HELP) $(OBJ_CMD_CLEAR) $(OBJ_CMD_SYSINFO) $(OBJ_CMD_HALT) \
@@ -110,7 +116,8 @@ OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
           $(OBJ_CMD_STAT) $(OBJ_CMD_TREE) $(OBJ_CMD_FIND) $(OBJ_CMD_GREP) \
           $(OBJ_CMD_ENV) $(OBJ_CMD_WC) $(OBJ_CMD_HEAD) $(OBJ_CMD_SOURCE) $(OBJ_CMD_KEYTEST) \
           $(OBJ_PMM) $(OBJ_VMM) $(OBJ_HEAP) $(OBJ_VFS) $(OBJ_RAMFS) $(OBJ_STRING) \
-          $(OBJ_IDE) $(OBJ_LEONFS) $(OBJ_SCRIPT)
+          $(OBJ_IDE) $(OBJ_LEONFS) $(OBJ_SCRIPT) \
+          $(OBJ_PCI) $(OBJ_RTL8139) $(OBJ_NET_CONFIG)
 
 TARGET = build/kernel.elf
 ISO = build/leonardos.iso
@@ -308,6 +315,18 @@ build/leonfs.o: $(LEONFS_C)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@
 
+build/pci.o: $(PCI_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/rtl8139.o: $(RTL8139_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/net_config.o: $(NET_CONFIG_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
 $(TARGET): $(OBJ_ALL)
 	$(LD) $(LDFLAGS) $^ -o $@
 
@@ -325,7 +344,8 @@ $(DISK_IMG):
 	qemu-img create -f raw $(DISK_IMG) 254M
 
 run: iso $(DISK_IMG)
-	qemu-system-x86_64 -cdrom $(ISO) -m 256 -drive file=$(DISK_IMG),format=raw,if=ide
+	qemu-system-x86_64 -cdrom $(ISO) -m 256 -drive file=$(DISK_IMG),format=raw,if=ide \
+		-netdev user,id=net0 -device rtl8139,netdev=net0
 
 clean:
 	rm -rf build/

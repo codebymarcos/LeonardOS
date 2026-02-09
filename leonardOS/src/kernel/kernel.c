@@ -14,6 +14,7 @@
 #include "fs/ramfs.h"
 #include "drivers/disk/ide.h"
 #include "fs/leonfs.h"
+#include "net/net_config.h"
 #include "shell/shell.h"
 
 void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multiboot_info) {
@@ -134,6 +135,9 @@ void __attribute__((regparm(0))) kernel_main_32(unsigned int magic, void *multib
             }
         }
     }
+
+    // Inicializa rede (PCI scan + RTL8139)
+    net_init();
 
     // Habilita interrupções
     asm volatile("sti");

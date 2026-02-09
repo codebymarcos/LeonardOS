@@ -107,3 +107,15 @@ void kmemset(void *dst, uint8_t val, uint32_t n) {
     uint8_t *d = (uint8_t *)dst;
     for (uint32_t i = 0; i < n; i++) d[i] = val;
 }
+
+// ============================================================
+// kmemcmp — compara n bytes
+// ============================================================
+int kmemcmp(const void *a, const void *b, uint32_t n) {
+    const uint8_t *pa = (const uint8_t *)a;
+    const uint8_t *pb = (const uint8_t *)b;
+    for (uint32_t i = 0; i < n; i++) {
+        if (pa[i] != pb[i]) return (int)pa[i] - (int)pb[i];
+    }
+    return 0;
+}

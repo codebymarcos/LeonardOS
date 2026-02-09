@@ -40,5 +40,6 @@ char ktolower(char c);
 
 void kmemcpy(void *dst, const void *src, uint32_t n);
 void kmemset(void *dst, uint8_t val, uint32_t n);
+int  kmemcmp(const void *a, const void *b, uint32_t n);
 
 #endif

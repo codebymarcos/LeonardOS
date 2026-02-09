@@ -14,7 +14,7 @@ Todos os objetos vão para `build/`. O Makefile tem regras explícitas por arqui
 
 ## Arquitetura (ordem de boot)
 
-`boot.s` → `kernel_main_32()`: GDT → PIC (remapeia IRQ 0-15 → INT 32-47) → ISR/IDT (256 entradas) → teclado (IRQ1) → PMM → VMM (mapeamento identidade 16MB) → Heap → `sti` → `shell_loop()`
+`boot.s` → `kernel_main_32()`: GDT → PIC (remapeia IRQ 0-15 → INT 32-47) → ISR/IDT (256 entradas) → teclado (IRQ1) → PMM → VMM (mapeamento identidade 16MB) → Heap → VFS + RamFS → IDE/ATA + LeonFS → `sti` → `shell_loop()`
 
 ## Convenções Principais
 
@@ -63,8 +63,26 @@ O comando `test` executa validação automatizada de todos os subsistemas: regis
 - **Heap**: kmalloc/kfree, lista ligada com first-fit, coalescing, alinhamento de 8 bytes
 
 ### Drivers
-- **VGA**: Modo texto 80x25, UTF-8→CP437, 16 cores, scrollback de 200 linhas
-- **Teclado**: PS/2 com scancodes estendidos (Page Up/Down, setas, Home/End)
+- **VGA**: Modo texto 80x25, UTF-8→CP437, 16 cores, scrollback de 200 linhas, sistema de captura para pipes
+- **Teclado**: PS/2 com scancodes estendidos (Page Up/Down, setas, Home/End), atalhos Ctrl, modo raw para diagnóstico
+- **IDE/ATA**: PIO LBA28, disco de 254MB com LeonFS
+- **Rede** (planejado): RTL8139 com IRQ + DMA
+
+### Sistema de Arquivos
+- **VFS**: Camada virtual abstrata
+- **RamFS**: Sistema de arquivos em RAM para root `/`
+- **LeonFS**: Sistema de arquivos on-disk com blocos indiretos (~69KB max por arquivo), mount em `/mnt`
+
+### Rede (planejado)
+- **Ethernet**: Frames, endereços MAC
+- **IP Stack**: ARP, IP, ICMP
+- **Transporte**: UDP/TCP básico
+- **API**: Sockets
+- **Comandos**: ping, ifconfig, netstat
+
+### Scripting
+- Engine completa em `src/shell/script.c`: controle de fluxo (if/else, while, for), funções, execução de arquivos `.sh`
+- Integração com shell: expansão de variáveis, globs, pipes, ponto-e-vírgula
 
 ### CPU
 - **GDT**: 3 segmentos planos de 4GB (null, code 0x9A/0xCF, data 0x92/0xCF)
@@ -72,9 +90,18 @@ O comando `test` executa validação automatizada de todos os subsistemas: regis
 - **PIC**: 8259 remapeado para INT 32-47
 
 ### Shell
-- Sistema de comandos modular: help, clear, sysinfo, halt, test, mem
+- Sistema de comandos modular: help, clear, sysinfo, halt, test, mem, df, ls, cat, echo, pwd, cd, mkdir, touch, rm, cp, reboot, stat, tree, find, grep, env, wc, head, source, keytest
 - `mem` mostra estatísticas PMM + Heap com barras visuais
-- `test` valida todos os subsistemas
+- `test` valida todos os subsistemas (26 comandos registrados)
+- Histórico circular de 32 entradas (setas up/down)
+- Pipes `|` com captura VGA (até 8 estágios)
+- Ponto-e-vírgula `;` para múltiplos comandos
+- Variáveis de ambiente `$VAR`, `$?` para código de saída, atribuição `NAME=value`
+- Expansão de globs `* ?`
+- Engine de scripts: if/elif/else/fi, while/do/done, for/in/do/done, definições de função
+- Comando `source` para executar scripts `.sh`
+- Atalhos de teclado: Ctrl+Up/Down para scroll, Ctrl+A para `;`
+- Echo suporta `>` (sobrescrever) e `>>` (anexar), strings entre aspas, sequências de escape
 
 ## Estrutura de Arquivos
 
@@ -94,19 +121,22 @@ leonardOS/
 │   ├── common/
 │   │   ├── colors.h    # Temas de cores VGA
 │   │   ├── io.h        # I/O de portas
+│   │   ├── string.c    # Funções de string
 │   │   └── types.h     # Tipos padrão
-│   ├── commands/       # Comandos shell
+│   ├── commands/       # Comandos shell (26 comandos)
 │   ├── cpu/            # GDT, IDT, ISR
-│   ├── drivers/        # VGA, teclado
+│   ├── drivers/        # VGA, teclado, IDE/ATA
+│   ├── fs/             # VFS, RamFS, LeonFS
 │   ├── kernel/
 │   │   └── kernel.c    # Sequência principal de boot
 │   ├── memory/         # PMM, VMM, Heap
 │   └── shell/
-│       └── shell.c     # Loop de comandos
+│       ├── shell.c     # Loop de comandos + features avançadas
+│       └── script.c    # Engine de scripts
 └── list.txt            # Checklist de features
 ```
 
-## Princípios de Saúde
+## Princípios de Saúde do codigo
 
 > Se uma decisão não reduz bugs hoje, ela provavelmente não é saudável agora.
 

@@ -17,4 +17,18 @@
 [v] IDE/ATA PIO driver (LBA28, LeonFS disco 32MB)
 [v] Reboot via 8042 keyboard controller
 [v] LeonFS readdir/finddir sector_buf corruption fix (ls agora funciona 1ª vez)
+[v] LeonFS indirect blocks (~69KB max file)
+[v] Sistema de arquivos completo (df, stat, tree, find, grep)
+[v] Shell avançado (histórico up/down, pipes |, ponto-e-vírgula ;, variáveis $VAR, globs *?)
+[v] Engine de scripts (if/elif/else/fi, while/do/done, for/in/do/done, funções)
+[v] Comandos adicionais (env, wc, head, source, keytest)
+[v] Atalhos de teclado (Ctrl+Up/Down scroll, Ctrl+A para ;)
+[v] Sistema de captura VGA para pipes
+[v] Testes automatizados atualizados (26 comandos, todos subsistemas)
+[ ] Driver de rede (RTL8139, IRQ + DMA)
+[ ] Camada Ethernet (frames, MAC addresses)
+[ ] Stack IP (ARP, IP, ICMP)
+[ ] UDP/TCP básico
+[ ] API de sockets
+[ ] Comandos de rede (ping, ifconfig, netstat)
 
