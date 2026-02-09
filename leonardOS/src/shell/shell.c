@@ -410,10 +410,10 @@ void shell_loop(void) {
     // Variáveis de ambiente padrão
     shell_setenv("HOME", "/");
     shell_setenv("SHELL", "LeonardOS");
-    shell_setenv("VERSION", "0.1");
+    shell_setenv("VERSION", "1.0.0");
 
     vga_set_color(THEME_DEFAULT);
-    vga_puts_color("LeonardOS v0.1", THEME_TITLE);
+    vga_puts_color("LeonardOS v1.0.0", THEME_TITLE);
     vga_puts(" - Digite '");
     vga_puts_color("help", THEME_INFO);
     vga_puts("' para ajuda\n\n");

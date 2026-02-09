@@ -25,7 +25,7 @@ void cmd_help(const char *args) {
     (void)args;
 
     vga_puts_color("\n LeonardOS", THEME_TITLE);
-    vga_puts_color(" v0.1\n", THEME_DIM);
+    vga_puts_color(" v1.0.0\n", THEME_DIM);
 
     help_section("Sistema");
     help_cmd("help",    "lista de comandos");

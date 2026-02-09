@@ -44,5 +44,10 @@
 [v] DNS dinâmico (configurável via ifconfig, usa net_config)
 [v] RTL8139 RX fix (ISR timing, ring buffer modulo, CAPR init)
 [v] Aumentar buffers (RTL8139 64KB, TCP 32KB, HTTP 8KB)
-[ ] TCP retransmission (timeout 500ms, 3 retries)s
+[v] TCP retransmission (timeout 500ms, 3 retries)
+[v] Comando artdog (ASCII art de cachorro)
+
+=== LeonardOS v1.0.0 ===
+47 subsistemas implementados
+Bare-metal x86 32-bit OS com networking stack completo
 

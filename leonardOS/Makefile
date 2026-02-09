@@ -69,6 +69,7 @@ HTTP_C = src/net/http.c
 CMD_PING_C = src/commands/cmd_ping.c
 CMD_NSLOOKUP_C = src/commands/cmd_nslookup.c
 CMD_WGET_C = src/commands/cmd_wget.c
+CMD_ARTDOG_C = src/commands/cmd_artdog.c
 PIT_C = src/drivers/timer/pit.c
 SOCKET_C = src/net/socket.c
 
@@ -135,6 +136,7 @@ OBJ_HTTP = build/http.o
 OBJ_CMD_PING = build/cmd_ping.o
 OBJ_CMD_NSLOOKUP = build/cmd_nslookup.o
 OBJ_CMD_WGET = build/cmd_wget.o
+OBJ_CMD_ARTDOG = build/cmd_artdog.o
 OBJ_PIT = build/pit.o
 OBJ_SOCKET = build/socket.o
 OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
@@ -151,7 +153,7 @@ OBJ_ALL = $(OBJ_BOOT) $(OBJ_KERNEL) $(OBJ_VGA) $(OBJ_KBD) $(OBJ_SHELL) \
           $(OBJ_PCI) $(OBJ_RTL8139) $(OBJ_NET_CONFIG) \
           $(OBJ_ETHERNET) $(OBJ_ARP) $(OBJ_IPV4) $(OBJ_ICMP) \
           $(OBJ_UDP) $(OBJ_TCP) $(OBJ_DNS) $(OBJ_HTTP) \
-          $(OBJ_CMD_PING) $(OBJ_CMD_NSLOOKUP) $(OBJ_CMD_WGET) \
+          $(OBJ_CMD_PING) $(OBJ_CMD_NSLOOKUP) $(OBJ_CMD_WGET) $(OBJ_CMD_ARTDOG) \
           $(OBJ_PIT) $(OBJ_SOCKET)
 
 TARGET = build/kernel.elf
@@ -411,6 +413,10 @@ build/cmd_nslookup.o: $(CMD_NSLOOKUP_C)
 	$(CC) $(CFLAGS) $< -o $@
 
 build/cmd_wget.o: $(CMD_WGET_C)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
+
+build/cmd_artdog.o: $(CMD_ARTDOG_C)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $< -o $@
 

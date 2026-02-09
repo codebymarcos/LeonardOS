@@ -320,8 +320,8 @@ vfs_node_t *ramfs_init(void) {
         // /etc/version
         vfs_node_t *version = ramfs_create_file(etc, "version");
         if (version) {
-            const char *ver = "0.3";
-            ramfs_write(version, 0, 3, (const uint8_t *)ver);
+            const char *ver = "1.0.0";
+            ramfs_write(version, 0, 5, (const uint8_t *)ver);
         }
     }
 

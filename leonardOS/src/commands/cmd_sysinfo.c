@@ -18,7 +18,7 @@ void cmd_sysinfo(const char *args) {
 
     vga_puts_color("  OS              ", THEME_LABEL);
     vga_puts_color(": ", THEME_DIM);
-    vga_puts_color("LeonardOS v0.1\n", THEME_VALUE);
+    vga_puts_color("LeonardOS v1.0.0\n", THEME_VALUE);
 
     vga_puts_color("  Kernel          ", THEME_LABEL);
     vga_puts_color(": ", THEME_DIM);

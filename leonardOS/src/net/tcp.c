@@ -1,6 +1,6 @@
 // LeonardOS - TCP (Transmission Control Protocol)
-// Implementação simplificada: client-only, sem retransmissão,
-// suficiente para HTTP/1.0 via QEMU user networking
+// Client-only com retransmissão (RTO 500ms, max 3 retries)
+// Suficiente para HTTP/1.0 via QEMU user networking
 
 #include "tcp.h"
 #include "ipv4.h"
@@ -48,6 +48,154 @@ static uint16_t tcp_alloc_port(void) {
     uint16_t port = next_local_port++;
     if (next_local_port > 60000) next_local_port = 49152;
     return port;
+}
+
+// ============================================================
+// tcp_send_segment_raw — envia segmento SEM atualizar seq_next
+// Usado para retransmissão (seq já foi avançado no envio original)
+// ============================================================
+static bool tcp_send_segment_raw(tcp_conn_t *conn, uint8_t flags,
+                                 uint32_t seq, const void *data,
+                                 uint16_t data_len) {
+    static uint8_t tcp_buf_raw[ETH_MTU];
+
+    tcp_header_t *hdr = (tcp_header_t *)tcp_buf_raw;
+
+    hdr->src_port    = htons(conn->local_port);
+    hdr->dst_port    = htons(conn->remote_port);
+    hdr->seq_num     = htonl(seq);
+    hdr->ack_num     = htonl(conn->ack_next);
+    hdr->data_offset = (TCP_HLEN_MIN / 4) << 4;
+    hdr->flags       = flags;
+    hdr->window      = htons(TCP_WINDOW);
+    hdr->checksum    = 0;
+    hdr->urgent_ptr  = 0;
+
+    if (data && data_len > 0) {
+        kmemcpy(tcp_buf_raw + TCP_HLEN_MIN, data, data_len);
+    }
+
+    uint16_t tcp_total = TCP_HLEN_MIN + data_len;
+
+    {
+        net_config_t *cfg = net_get_config();
+        static uint8_t cksum_buf_raw[ETH_MTU + 12];
+        tcp_pseudo_header_t *pseudo = (tcp_pseudo_header_t *)cksum_buf_raw;
+
+        kmemcpy(pseudo->src_ip, cfg->ip.octets, 4);
+        kmemcpy(pseudo->dst_ip, conn->remote_ip.octets, 4);
+        pseudo->zero       = 0;
+        pseudo->protocol   = IP_PROTO_TCP;
+        pseudo->tcp_length = htons(tcp_total);
+
+        kmemcpy(cksum_buf_raw + sizeof(tcp_pseudo_header_t), tcp_buf_raw, tcp_total);
+
+        uint16_t cksum = ip_checksum(cksum_buf_raw,
+                                     sizeof(tcp_pseudo_header_t) + tcp_total);
+        hdr->checksum = cksum;
+    }
+
+    bool ok = ipv4_send(conn->remote_ip, IP_PROTO_TCP, tcp_buf_raw, tcp_total);
+    if (ok) stats.segments_tx++;
+    return ok;
+}
+
+// ============================================================
+// tx_queue_enqueue — adiciona segmento à fila de retransmissão
+// ============================================================
+static bool tx_queue_enqueue(tcp_conn_t *conn, uint32_t seq, uint8_t flags,
+                             const void *data, uint16_t data_len) {
+    // Procura slot livre
+    for (int i = 0; i < TCP_TX_QUEUE_SIZE; i++) {
+        if (!conn->tx_queue[i].in_use) {
+            tcp_tx_seg_t *seg = &conn->tx_queue[i];
+            seg->in_use      = true;
+            seg->seq          = seq;
+            seg->flags        = flags;
+            seg->data_len     = data_len;
+            seg->send_time_ms = pit_get_ms();
+            seg->retries      = 0;
+
+            if (data && data_len > 0) {
+                kmemcpy(seg->data, data, data_len);
+            }
+
+            conn->tx_pending++;
+            return true;
+        }
+    }
+    return false; // Fila cheia
+}
+
+// ============================================================
+// tcp_process_ack — remove segmentos confirmados da fila TX
+// Chamado quando recebemos ACK do peer
+// ============================================================
+static void tcp_process_ack(tcp_conn_t *conn, uint32_t ack_num) {
+    for (int i = 0; i < TCP_TX_QUEUE_SIZE; i++) {
+        tcp_tx_seg_t *seg = &conn->tx_queue[i];
+        if (!seg->in_use) continue;
+
+        // ACK cobre este segmento? (seg.seq + seg.data_len <= ack_num)
+        uint32_t seg_end = seg->seq + seg->data_len;
+        if (seg->data_len == 0) seg_end = seg->seq + 1; // SYN/FIN = 1 seq
+
+        // Comparação com wrapping: ack_num >= seg_end
+        // Simplificação: se ack_num >= seg_end, segmento foi confirmado
+        if ((int32_t)(ack_num - seg_end) >= 0) {
+            seg->in_use = false;
+            conn->tx_pending--;
+        }
+    }
+
+    // Atualiza send_unack para o menor seq não confirmado
+    conn->send_unack = conn->seq_next; // Assume tudo confirmado
+    for (int i = 0; i < TCP_TX_QUEUE_SIZE; i++) {
+        if (conn->tx_queue[i].in_use) {
+            if ((int32_t)(conn->tx_queue[i].seq - conn->send_unack) < 0) {
+                conn->send_unack = conn->tx_queue[i].seq;
+            }
+        }
+    }
+}
+
+// ============================================================
+// tcp_check_retransmit — verifica e reenvia segmentos expirados
+// ============================================================
+void tcp_check_retransmit(void) {
+    uint32_t now = pit_get_ms();
+
+    for (int c = 0; c < TCP_MAX_CONNS; c++) {
+        tcp_conn_t *conn = &conns[c];
+        if (!conn->active || conn->tx_pending == 0) continue;
+        if (conn->state != TCP_STATE_ESTABLISHED &&
+            conn->state != TCP_STATE_FIN_WAIT_1) continue;
+
+        for (int i = 0; i < TCP_TX_QUEUE_SIZE; i++) {
+            tcp_tx_seg_t *seg = &conn->tx_queue[i];
+            if (!seg->in_use) continue;
+
+            uint32_t elapsed = now - seg->send_time_ms;
+            if (elapsed < TCP_RTO_MS) continue;
+
+            // Timeout expirado
+            if (seg->retries >= TCP_MAX_RETRIES) {
+                // Desiste deste segmento
+                seg->in_use = false;
+                conn->tx_pending--;
+                stats.retransmit_fail++;
+                continue;
+            }
+
+            // Retransmite
+            seg->retries++;
+            seg->send_time_ms = now;
+
+            tcp_send_segment_raw(conn, seg->flags, seg->seq,
+                                 seg->data, seg->data_len);
+            stats.retransmits++;
+        }
+    }
 }
 
 // ============================================================
@@ -185,8 +333,7 @@ static void tcp_rx_handler(const void *payload, uint16_t len,
             // ACK para nossos dados
             if (hdr->flags & TCP_ACK) {
                 // seg_ack confirma bytes até seg_ack - 1
-                // (simplificação: sem tracking de retransmissão)
-                (void)seg_ack;
+                tcp_process_ack(conn, seg_ack);
             }
 
             // Dados recebidos
@@ -226,6 +373,7 @@ static void tcp_rx_handler(const void *payload, uint16_t len,
         case TCP_STATE_FIN_WAIT_1:
             // Esperando ACK do nosso FIN
             if (hdr->flags & TCP_ACK) {
+                tcp_process_ack(conn, seg_ack);
                 // Dados que ainda podem chegar
                 if (data_len > 0) {
                     if (seg_seq == conn->ack_next) {
@@ -313,7 +461,9 @@ int tcp_connect(ip_addr_t dst_ip, uint16_t dst_port, uint32_t timeout_ms) {
     conn->local_port  = tcp_alloc_port();
     conn->initial_seq = tcp_generate_isn();
     conn->seq_next    = conn->initial_seq;
+    conn->send_unack  = conn->initial_seq;
     conn->ack_next    = 0;
+    conn->tx_pending  = 0;
 
     stats.connections++;
 
@@ -362,6 +512,7 @@ int tcp_connect(ip_addr_t dst_ip, uint16_t dst_port, uint32_t timeout_ms) {
 
 // ============================================================
 // tcp_send — envia dados por conexão estabelecida
+// Cada segmento é enfileirado para retransmissão automática
 // ============================================================
 int tcp_send(int conn_id, const void *data, uint16_t len) {
     if (conn_id < 0 || conn_id >= TCP_MAX_CONNS) return -1;
@@ -381,9 +532,15 @@ int tcp_send(int conn_id, const void *data, uint16_t len) {
         uint8_t flags = TCP_ACK;
         if (remaining <= TCP_MSS) flags |= TCP_PSH; // Push no último
 
+        // Guarda seq antes de enviar (tcp_send_segment avança seq_next)
+        uint32_t seg_seq = conn->seq_next;
+
         if (!tcp_send_segment(conn, flags, ptr, seg_len)) {
             return (total_sent > 0) ? (int)total_sent : -1;
         }
+
+        // Enfileira para retransmissão (se fila não estiver cheia, ignora silenciosamente)
+        tx_queue_enqueue(conn, seg_seq, flags, ptr, seg_len);
 
         ptr        += seg_len;
         remaining  -= seg_len;
@@ -429,6 +586,9 @@ int tcp_recv(int conn_id, void *buf, uint16_t buf_size, uint32_t timeout_ms) {
         }
 
         if (conn->rst_received) return -1;
+
+        // Verifica retransmissão de segmentos pendentes
+        tcp_check_retransmit();
 
         // Sleep ~5ms usando PIT
         pit_sleep_ms(5);
@@ -494,6 +654,12 @@ void tcp_close(int conn_id) {
     // Libera slot
     conn->active = false;
     conn->state  = TCP_STATE_CLOSED;
+
+    // Limpa fila de retransmissão
+    for (int i = 0; i < TCP_TX_QUEUE_SIZE; i++) {
+        conn->tx_queue[i].in_use = false;
+    }
+    conn->tx_pending = 0;
 }
 
 // ============================================================

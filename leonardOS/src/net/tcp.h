@@ -69,6 +69,22 @@ typedef enum {
 // ============================================================
 #define TCP_RX_BUF_SIZE 32768   // Buffer de recepção circular (32KB)
 
+// Retransmissão
+#define TCP_TX_QUEUE_SIZE 8     // Máximo de segmentos pendentes
+#define TCP_RTO_MS        500   // Retransmission timeout (ms)
+#define TCP_MAX_RETRIES   3     // Máximo de retransmissões por segmento
+
+// Segmento pendente na fila de retransmissão
+typedef struct {
+    bool     in_use;                    // Slot ativo
+    uint32_t seq;                       // Número de sequência do segmento
+    uint16_t data_len;                  // Tamanho dos dados (payload)
+    uint8_t  flags;                     // Flags TCP do segmento
+    uint8_t  data[TCP_MSS];             // Cópia do payload
+    uint32_t send_time_ms;              // Timestamp do último envio (PIT ms)
+    uint8_t  retries;                   // Quantas vezes foi retransmitido
+} tcp_tx_seg_t;
+
 typedef struct {
     bool        active;         // Slot em uso
     tcp_state_t state;          // Estado da conexão
@@ -82,12 +98,17 @@ typedef struct {
     uint32_t    seq_next;       // Próximo seq a enviar
     uint32_t    ack_next;       // Próximo ack esperado (seq remoto)
     uint32_t    initial_seq;    // ISN local
+    uint32_t    send_unack;     // Oldest unacknowledged seq number
 
     // Buffer de recepção
     uint8_t     rx_buf[TCP_RX_BUF_SIZE];
     uint16_t    rx_write;       // Posição de escrita
     uint16_t    rx_read;        // Posição de leitura
     uint16_t    rx_count;       // Bytes no buffer
+
+    // Fila de retransmissão (TX)
+    tcp_tx_seg_t tx_queue[TCP_TX_QUEUE_SIZE];
+    uint8_t      tx_pending;    // Segmentos pendentes de ACK
 
     // Flags de controle
     volatile bool syn_ack_received;  // Handshake: SYN-ACK recebido
@@ -129,6 +150,9 @@ uint16_t tcp_available(int conn_id);
 // Verifica se o peer já fechou (FIN recebido) e todos os dados foram lidos
 bool tcp_peer_closed(int conn_id);
 
+// Verifica e retransmite segmentos expirados (chamar periodicamente)
+void tcp_check_retransmit(void);
+
 // Estatísticas TCP
 typedef struct {
     uint32_t segments_rx;
@@ -138,6 +162,8 @@ typedef struct {
     uint32_t handshake_fail;
     uint32_t resets;
     uint32_t rx_bad_checksum;
+    uint32_t retransmits;       // Segmentos retransmitidos
+    uint32_t retransmit_fail;   // Segmentos dropados (max retries)
 } tcp_stats_t;
 
 tcp_stats_t tcp_get_stats(void);

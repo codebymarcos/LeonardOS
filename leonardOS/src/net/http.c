@@ -185,7 +185,7 @@ static bool http_do_request(const http_url_t *parsed, http_response_t *response)
     request[pos++] = '\r'; request[pos++] = '\n';
 
     // User-Agent
-    const char *ua = "User-Agent: LeonardOS/0.1\r\n";
+    const char *ua = "User-Agent: LeonardOS/1.0.0\r\n";
     for (int j = 0; ua[j]; j++) request[pos++] = ua[j];
 
     // Connection: close

@@ -33,6 +33,7 @@
 #include "cmd_ping.h"
 #include "cmd_nslookup.h"
 #include "cmd_wget.h"
+#include "cmd_artdog.h"
 
 // ============================================================
 // Tabela de comandos
@@ -71,6 +72,7 @@ static const command_t command_table[] = {
     { "ping",     "testa conectividade (ICMP)",     cmd_ping     },
     { "nslookup", "resolve DNS",                    cmd_nslookup },
     { "wget",     "download HTTP",                  cmd_wget     },
+    { "artdog",   "desenho de cachorro",            cmd_artdog   },
 };
 
 static const int command_count = sizeof(command_table) / sizeof(command_table[0]);
