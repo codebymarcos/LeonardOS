@@ -8,7 +8,13 @@
 void cmd_halt(const char *args) {
     (void)args;
     vga_puts_color("Desligando...\n", THEME_WARNING);
+    vga_puts_color("(Sistema parado. Feche o QEMU ou pressione Ctrl+C)\n", THEME_DIM);
+    
+    // Desabilita interrupções
     asm volatile("cli");
-    asm volatile("hlt");
-    while (1);
+    
+    // Loop infinito com HLT (CPU aguarda interrupção, economiza energia)
+    while (1) {
+        asm volatile("hlt");
+    }
 }

@@ -13,6 +13,7 @@
 #include "../common/string.h"
 #include "../fs/vfs.h"
 #include "../fs/ramfs.h"
+#include "../fs/leonfs.h"
 #include "../shell/shell.h"
 
 void cmd_echo(const char *args) {
@@ -114,8 +115,13 @@ void cmd_echo(const char *args) {
         return;
     }
 
-    // Cria ou reutiliza o arquivo
-    vfs_node_t *file = ramfs_create_file(parent, file_name);
+    // Cria ou reutiliza o arquivo (detecta FS correto)
+    vfs_node_t *file;
+    if (leonfs_is_node(parent)) {
+        file = leonfs_create_file(parent, file_name);
+    } else {
+        file = ramfs_create_file(parent, file_name);
+    }
     if (!file) {
         vga_puts_color("echo: nao foi possivel criar arquivo\n", THEME_ERROR);
         return;

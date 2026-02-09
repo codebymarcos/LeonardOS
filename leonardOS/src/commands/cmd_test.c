@@ -810,8 +810,8 @@ static void test_commands(void) {
     test_result("Pelo menos 4 comandos", count >= 4, NULL);
 
     // Verifica se cada comando base existe
-    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem", "ls", "cat", "echo", "pwd", "cd", "mkdir", "touch", "rm", "cp"};
-    int num_expected = 15;
+    const char *expected[] = {"help", "clear", "sysinfo", "halt", "test", "mem", "df", "ls", "cat", "echo", "pwd", "cd", "mkdir", "touch", "rm", "cp", "reboot", "stat", "tree", "find"};
+    int num_expected = 20;
 
     for (int i = 0; i < num_expected; i++) {
         const command_t *cmd = commands_find(expected[i]);

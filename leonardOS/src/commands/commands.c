@@ -8,6 +8,7 @@
 #include "cmd_halt.h"
 #include "cmd_test.h"
 #include "cmd_mem.h"
+#include "cmd_df.h"
 #include "cmd_ls.h"
 #include "cmd_cat.h"
 #include "cmd_echo.h"
@@ -18,6 +19,9 @@
 #include "cmd_rm.h"
 #include "cmd_cp.h"
 #include "cmd_reboot.h"
+#include "cmd_stat.h"
+#include "cmd_tree.h"
+#include "cmd_find.h"
 
 // ============================================================
 // Tabela de comandos
@@ -31,6 +35,7 @@ static const command_t command_table[] = {
     { "halt",    "desliga o kernel",                cmd_halt    },
     { "test",    "teste automatizado do kernel",    cmd_test    },
     { "mem",     "exibe uso de memoria fisica",     cmd_mem     },
+    { "df",      "exibe uso de espaço em disco",     cmd_df      },
     { "ls",      "lista conteudo de diretorio",     cmd_ls      },
     { "cat",     "exibe conteudo de arquivo",       cmd_cat     },
     { "echo",    "escreve texto / grava em arquivo", cmd_echo    },
@@ -41,6 +46,9 @@ static const command_t command_table[] = {
     { "rm",      "remove arquivo ou diretorio",        cmd_rm      },
     { "cp",      "copia um arquivo",                    cmd_cp      },
     { "reboot",  "reinicia o sistema",                  cmd_reboot  },
+    { "stat",    "exibe informacoes de arquivo",          cmd_stat    },
+    { "tree",    "arvore de diretorios",                   cmd_tree    },
+    { "find",    "busca arquivos por nome",                cmd_find    },
 };
 
 static const int command_count = sizeof(command_table) / sizeof(command_table[0]);

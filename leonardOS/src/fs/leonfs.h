@@ -110,4 +110,8 @@ bool leonfs_is_node(vfs_node_t *node);
 // Retorna true se removido com sucesso
 bool leonfs_remove(vfs_node_t *parent, const char *name);
 
+// Retorna ponteiro para o superbloco do LeonFS em cache
+// Retorna NULL se LeonFS não foi montado
+leonfs_superblock_t *leonfs_get_superblock(void);
+
 #endif

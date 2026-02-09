@@ -14,6 +14,7 @@
 #include "../common/string.h"
 #include "../fs/vfs.h"
 #include "../fs/ramfs.h"
+#include "../fs/leonfs.h"
 #include "../shell/shell.h"
 
 void cmd_cp(const char *args) {
@@ -118,8 +119,13 @@ void cmd_cp(const char *args) {
         return;
     }
 
-    // Cria arquivo destino
-    vfs_node_t *dst = ramfs_create_file(parent, file_name);
+    // Cria arquivo destino (detecta FS correto)
+    vfs_node_t *dst;
+    if (leonfs_is_node(parent)) {
+        dst = leonfs_create_file(parent, file_name);
+    } else {
+        dst = ramfs_create_file(parent, file_name);
+    }
     if (!dst) {
         vga_puts_color("cp: falha ao criar destino\n", THEME_ERROR);
         return;

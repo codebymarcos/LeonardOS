@@ -770,3 +770,11 @@ bool leonfs_remove(vfs_node_t *parent, const char *name) {
 
     return true;
 }
+
+// ============================================================
+// leonfs_get_superblock — Expõe o superbloco em cache
+// ============================================================
+leonfs_superblock_t *leonfs_get_superblock(void) {
+    if (!fs_mounted) return NULL;
+    return &superblock;
+}

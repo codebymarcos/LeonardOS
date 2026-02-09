@@ -12,18 +12,27 @@ void cmd_help(const char *args) {
     int count = commands_get_count();
 
     vga_puts_color("\n", THEME_DEFAULT);
-    vga_puts_color("     _.--._  _.--._\n", THEME_BANNER);
-    vga_puts_color("  ,-=.-\":;:;:;\\'\\':;:;:;\"-._\n", THEME_BANNER);
-    vga_puts_color("  \\\\\\:;:;:;:;:;\\:;:;:;:;:;\\\n", THEME_BANNER);
-    vga_puts_color("   \\\\\\:;:;:;:;:;\\:;:;:;:;:;\\\n", THEME_BANNER);
-    vga_puts_color("    \\\\\\:;:;:;:;:;\\:;:;:;:;:;\\\n", THEME_BANNER);
-    vga_puts_color("     \\\\\\:;:;:;:;:;\\:;::;:;:;:\\\n", THEME_BANNER);
-    vga_puts_color("      \\\\\\;:;::;:;:;\\:;:;:;::;:\\\n", THEME_BANNER);
-    vga_puts_color("       \\\\\\;;:;:_:--:\\:_:--:_;:;\\", THEME_BANNER);
-    vga_puts_color("    -leonardOS\n", THEME_TITLE);
-    vga_puts_color("        \\\\\\_.-\"      :      \"-._\\\n", THEME_BANNER);
-    vga_puts_color("         \\`_..--\"\"--. ;.--\"\"--.._ =>\n", THEME_BANNER);
-    vga_puts_color("          \"\n\n", THEME_BANNER);
+    vga_puts_color("             a          a       \n", THEME_BANNER);
+    vga_puts_color("             aaa        aaa     \n", THEME_BANNER);
+    vga_puts_color("            aaaaaaaaaaaaaaaa    \n", THEME_BANNER);
+    vga_puts_color("           aaaaaaaaaaaaaaaaaa   \n", THEME_BANNER);
+    vga_puts_color("          aaaaafaaaaaaafaaaaaa  \n", THEME_BANNER);
+    vga_puts_color("          aaaaaaaaaaaaaaaaaaaa  \n", THEME_BANNER);
+    vga_puts_color("           aaaaaaaaaaaaaaaaaa   \n", THEME_BANNER);
+    vga_puts_color("            aaaaaaa  aaaaaaa    \n", THEME_BANNER);
+    vga_puts_color("             aaaaaaaaaaaaaa     \n", THEME_BANNER);
+    vga_puts_color("  a         aaaaaaaaaaaaaaaa    \n", THEME_BANNER);
+    vga_puts_color(" aaa       aaaaaaaaaaaaaaaaaa   \n", THEME_BANNER);
+    vga_puts_color(" aaa      aaaaaaaaaaaaaaaaaaaa  \n", THEME_BANNER);
+    vga_puts_color(" aaa     aaaaaaaaaaaaaaaaaaaaaa \n", THEME_BANNER);
+    vga_puts_color(" aaa    aaaaaaaaaaaaaaaaaaaaaaaa\n", THEME_BANNER);
+    vga_puts_color("  aaa   aaaaaaaaaaaaaaaaaaaaaaaa\n", THEME_BANNER);
+    vga_puts_color("  aaa   aaaaaaaaaaaaaaaaaaaaaaaa\n", THEME_BANNER);
+    vga_puts_color("  aaa    aaaaaaaaaaaaaaaaaaaaaa \n", THEME_BANNER);
+    vga_puts_color("   aaa    aaaaaaaaaaaaaaaaaaaa  \n", THEME_BANNER);
+    vga_puts_color("    aaaaaaaaaaaaaaaaaaaaaaaaaa  \n", THEME_BANNER);
+    vga_puts_color("     aaaaaaaaaaaaaaaaaaaaaaaaa  \n", THEME_BANNER);
+    vga_puts_color("                 leonardOS\n\n", THEME_TITLE);
 
     vga_puts_color("  Comandos disponiveis:\n", THEME_DEFAULT);
 
