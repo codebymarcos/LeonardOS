@@ -1,7 +1,7 @@
 CC = gcc
 LD = ld
 
-CFLAGS = -Wall -Wextra -ffreestanding -fno-stack-protector \
+CFLAGS = -Wall -Wextra -std=gnu99 -ffreestanding -fno-stack-protector \
          -fno-builtin -fno-common -m32 -c -I src
 ASFLAGS = --32
 LDFLAGS = -T config/leonardos.ld -nostdlib -m elf_i386 -n
